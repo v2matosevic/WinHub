@@ -26,9 +26,15 @@ swift build -c debug  # fast compile check, no .app bundle
 ```
 
 After launching, click the menu-bar icon (a 2×2 grid), flip a module **on**, and
-grant the permission it asks for in System Settings → Privacy & Security. The app
-polls every ~2s, so the module activates within a couple seconds of being granted —
+grant the permission it asks for in System Settings → Privacy & Security. For
+**Accessibility**, the app polls every ~2s and activates within a couple seconds —
 no relaunch needed.
+
+**Screen Recording** (Dock hover previews) is different — macOS only honors the
+grant on a *fresh launch*, so after enabling it use the menu's **Relaunch WinHub**
+item. If WinHub doesn't appear in the Screen Recording list, add it manually: open
+System Settings → Privacy & Security → Screen & System Audio Recording, click `+`,
+and select `WinHub.app`, then enable it and relaunch.
 
 ## Keep your permission grants across rebuilds
 

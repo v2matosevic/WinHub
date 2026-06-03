@@ -92,6 +92,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         about.target = self
         menu.addItem(about)
 
+        // Handy after granting Screen Recording — ScreenCaptureKit only sees the grant
+        // on a fresh launch.
+        let relaunch = NSMenuItem(title: "Relaunch WinHub", action: #selector(relaunchApp), keyEquivalent: "")
+        relaunch.target = self
+        menu.addItem(relaunch)
+
         let quit = NSMenuItem(title: "Quit WinHub", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -125,6 +131,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 string: "Windows comforts for macOS.\nA hub of small lifestyle tweaks.",
                 attributes: [.font: NSFont.systemFont(ofSize: 11)])
         ])
+    }
+
+    @objc private func relaunchApp() {
+        let config = NSWorkspace.OpenConfiguration()
+        config.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

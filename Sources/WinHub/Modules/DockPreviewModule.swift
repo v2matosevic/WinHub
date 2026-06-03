@@ -22,8 +22,14 @@ final class DockPreviewModule: HubModule {
     private var generation = 0
 
     func start() {
-        guard !isRunning, requiredPermissions.allSatisfy({ $0.isGranted }) else { return }
+        let ax = Permission.accessibility.isGranted
+        let sr = Permission.screenRecording.isGranted
+        guard !isRunning, ax, sr else {
+            NSLog("[WinHub.dock] start skipped — running=\(isRunning) accessibility=\(ax) screenRecording=\(sr)")
+            return
+        }
         isRunning = true
+        NSLog("[WinHub.dock] started — polling for Dock hovers")
 
         panel.onSelect = { [weak self] selection in self?.select(selection) }
 
