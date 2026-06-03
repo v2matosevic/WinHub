@@ -34,6 +34,9 @@ clutter — it just sits in your status bar.
 - **Dock hover previews** — hover a Dock icon to see live thumbnails of that
   app's windows, like the Windows taskbar. Click a thumbnail to jump straight
   to that window. Minimized windows are shown too, and clicking restores them.
+- **Snap windows to edges** — drag a window to a screen edge to snap it, Aero
+  Snap-style: left edge for the left half, right edge for the right half, top
+  edge to maximize. A preview shows where it'll land before you let go.
 - **Starts at login** and stays out of your way in the menu bar.
 
 More tweaks are on the [roadmap](#roadmap) — and the module system makes adding
@@ -104,7 +107,7 @@ and how to add a module.
 
 ## Roadmap
 
-- Window snapping (drag-to-edge tiling)
+- Quarter-tiling (corner snap) and keyboard snap shortcuts
 - Alt+Tab per-window switching
 - Cut & paste files in Finder (⌘X)
 - A real preferences window (exclusions, hover delay)

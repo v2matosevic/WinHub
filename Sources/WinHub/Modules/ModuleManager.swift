@@ -13,6 +13,7 @@ final class ModuleManager {
     init() {
         modules = [
             CloseToQuitModule(),
+            SnapModule(),
             DockPreviewModule(),
         ]
     }

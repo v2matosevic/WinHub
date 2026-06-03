@@ -79,6 +79,20 @@ non-activating `DockPreviewPanel`. Clicking a thumbnail raises the window via AX
 listed with the app icon as a placeholder, since macOS can't live-capture them.
 The panel anchors above the tile (bottom Dock) or beside it (left/right Dock).
 
+### SnapModule (Accessibility)
+
+Windows-style Aero Snap. A global monitor catches `leftMouseDown`/`leftMouseUp`;
+between them a ~20 fps timer polls the cursor (`Sources/WinHub/Snap/`). On
+mouse-down it captures the window under the cursor via
+`AXUIElementCopyElementAtPosition` (climbing to the `AXWindow` ancestor) and its
+start position. The module engages only once that window actually moves (so plain
+clicks and in-window text drags are ignored). While dragging near a screen edge it
+shows a translucent, click-through `SnapOverlay` previewing the target — left
+edge → left half, right edge → right half, top edge → maximize (to
+`visibleFrame`, so the menu bar and Dock are respected). On release it sets the
+window's `AXPosition`/`AXSize` (`WindowAX.setFrame`, position-size-position to
+beat apps that clamp). Coordinate conversions live in `ScreenGeometry`.
+
 ## Permissions & code signing
 
 Both Dock previews and window raising depend on TCC permissions, and there are
