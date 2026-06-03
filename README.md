@@ -12,7 +12,10 @@ on or off from the menu bar.
 | Module | Status | What it does | Permissions |
 | --- | --- | --- | --- |
 | **Close button quits app** | ✅ built | Closing an app's last window quits the app, Windows-style (graceful — unsaved-work prompts still appear). All apps, minus a safe denylist (Finder, System Settings, Dock, Control Center, ourselves) plus your own exclusions. | Accessibility |
-| **Dock hover previews** | 🚧 next | Live window thumbnails when you hover a Dock icon, like the Windows taskbar. | Accessibility, Screen Recording |
+| **Dock hover previews** | ✅ built | Live window thumbnails when you hover a Dock icon, like the Windows taskbar. Click a thumbnail to raise that window. | Accessibility, Screen Recording |
+
+WinHub also **starts at login** automatically (auto-enabled on first run; toggle it
+from the menu under "Start at login").
 
 ## Build & run
 

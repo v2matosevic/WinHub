@@ -21,6 +21,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
 
+        // Auto-enable launch-at-login on first run — WinHub should just come back
+        // after a reboot. The user can turn it off from the menu.
+        if !UserDefaults.standard.bool(forKey: "didSetupLoginItem") {
+            LoginItem.setEnabled(true)
+            UserDefaults.standard.set(true, forKey: "didSetupLoginItem")
+        }
+
         manager.bootstrap()
         populate(menu)
 
@@ -42,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func populate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let header = NSMenuItem(title: "WinHub", action: nil, keyEquivalent: "")
+        let header = NSMenuItem(title: "WinHub \(AppInfo.version)", action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
         menu.addItem(.separator())
@@ -75,6 +82,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+
+        let login = NSMenuItem(title: "Start at login", action: #selector(toggleLoginItem), keyEquivalent: "")
+        login.target = self
+        login.state = LoginItem.isEnabled ? .on : .off
+        menu.addItem(login)
+
+        let about = NSMenuItem(title: "About WinHub", action: #selector(showAbout), keyEquivalent: "")
+        about.target = self
+        menu.addItem(about)
+
         let quit = NSMenuItem(title: "Quit WinHub", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -92,6 +109,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .accessibility:   Permissions.requestAccessibility()
         case .screenRecording: Permissions.requestScreenRecording()
         }
+    }
+
+    @objc private func toggleLoginItem() {
+        LoginItem.setEnabled(!LoginItem.isEnabled)
+        if let menu = statusItem.menu { populate(menu) }
+    }
+
+    @objc private func showAbout() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: AppInfo.name,
+            .applicationVersion: AppInfo.version,
+            .credits: NSAttributedString(
+                string: "Windows comforts for macOS.\nA hub of small lifestyle tweaks.",
+                attributes: [.font: NSFont.systemFont(ofSize: 11)])
+        ])
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
