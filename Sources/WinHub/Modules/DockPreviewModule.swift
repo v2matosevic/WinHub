@@ -77,12 +77,26 @@ final class DockPreviewModule: HubModule {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 160_000_000)   // hover dwell
             guard token == self.generation else { return }
-            let shots = await self.thumbnails.capture(appPID: app.processIdentifier)
+
+            var shots = await self.thumbnails.capture(appPID: app.processIdentifier)
+
+            // Add minimized windows (icon placeholders — macOS can't live-capture them).
+            let minimized = DockAccessibility.minimizedWindowTitles(forPID: app.processIdentifier)
+            if !minimized.isEmpty, let icon = app.icon?.cgImageRep() {
+                let shown = Set(shots.map { $0.title })
+                for title in minimized where !shown.contains(title) {
+                    shots.append(WindowShot(windowID: 0,
+                                            title: title.isEmpty ? (app.localizedName ?? "Window") : title,
+                                            image: icon))
+                }
+            }
+
             guard token == self.generation else { return }
             if shots.isEmpty {
                 self.panel.orderOut(nil)
             } else {
-                self.panel.show(shots: shots, app: app, anchorTileFrameCocoa: tile.frameCocoa)
+                self.panel.show(shots: shots, app: app,
+                                anchorTileFrameCocoa: tile.frameCocoa, orientation: tile.orientation)
             }
         }
     }
@@ -124,6 +138,8 @@ final class DockPreviewModule: HubModule {
         } ?? windows.first
 
         if let match {
+            // Un-minimize first (no-op if it wasn't), then raise and focus.
+            AXUIElementSetAttributeValue(match, kAXMinimizedAttribute as CFString, false as CFTypeRef)
             AXUIElementPerformAction(match, kAXRaiseAction as CFString)
             AXUIElementSetAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, match)
         }

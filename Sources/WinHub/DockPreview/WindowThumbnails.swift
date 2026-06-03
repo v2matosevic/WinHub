@@ -8,6 +8,16 @@ struct WindowShot {
     let image: CGImage
 }
 
+extension NSImage {
+    /// A CGImage backing at roughly `pixelSize`, picking a hi-res representation when
+    /// available — used to show an app icon as a placeholder for minimized windows.
+    func cgImageRep(pixelSize: CGFloat = 256) -> CGImage? {
+        var rect = CGRect(x: 0, y: 0, width: pixelSize, height: pixelSize)
+        return cgImage(forProposedRect: &rect, context: nil,
+                       hints: [.interpolation: NSImageInterpolation.high.rawValue])
+    }
+}
+
 /// Captures thumbnails of an application's on-screen windows via ScreenCaptureKit.
 /// Requires Screen Recording permission; returns an empty array if it's missing or
 /// the app has no eligible windows.

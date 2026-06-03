@@ -55,7 +55,8 @@ final class DockPreviewPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    func show(shots: [WindowShot], app: NSRunningApplication, anchorTileFrameCocoa tile: CGRect) {
+    func show(shots: [WindowShot], app: NSRunningApplication,
+              anchorTileFrameCocoa tile: CGRect, orientation: DockOrientation) {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for shot in shots {
             stack.addArrangedSubview(makeThumb(shot, app: app))
@@ -65,11 +66,19 @@ final class DockPreviewPanel: NSPanel {
         let fitting = effect.fittingSize
         setContentSize(fitting)
 
-        var origin = NSPoint(x: tile.midX - fitting.width / 2, y: tile.maxY + 8)
+        // Anchor relative to the Dock edge: above (bottom Dock) or beside (left/right).
+        let gap: CGFloat = 8
+        var origin: NSPoint
+        switch orientation {
+        case .bottom: origin = NSPoint(x: tile.midX - fitting.width / 2, y: tile.maxY + gap)
+        case .left:   origin = NSPoint(x: tile.maxX + gap, y: tile.midY - fitting.height / 2)
+        case .right:  origin = NSPoint(x: tile.minX - fitting.width - gap, y: tile.midY - fitting.height / 2)
+        }
+
         let screen = NSScreen.screens.first(where: { $0.frame.intersects(tile) }) ?? NSScreen.main
         if let visible = screen?.visibleFrame {
             origin.x = max(visible.minX + 6, min(origin.x, visible.maxX - fitting.width - 6))
-            origin.y = min(origin.y, visible.maxY - fitting.height - 6)
+            origin.y = max(visible.minY + 6, min(origin.y, visible.maxY - fitting.height - 6))
         }
         setFrameOrigin(origin)
         orderFrontRegardless()
