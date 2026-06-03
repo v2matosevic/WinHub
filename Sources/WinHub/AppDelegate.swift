@@ -1,0 +1,104 @@
+import AppKit
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private var statusItem: NSStatusItem!
+    private let manager = ModuleManager()
+    private var reconcileTimer: Timer?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        manager.onChange = { [weak self] in
+            guard let self, let menu = self.statusItem.menu else { return }
+            self.populate(menu)
+        }
+
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem.button {
+            button.image = NSImage(systemSymbolName: "square.grid.2x2.fill", accessibilityDescription: "WinHub")
+            button.image?.isTemplate = true
+        }
+
+        let menu = NSMenu()
+        menu.delegate = self
+        statusItem.menu = menu
+
+        manager.bootstrap()
+        populate(menu)
+
+        // Permissions are granted out-of-process (System Settings) with no callback,
+        // so poll: a module flips on within ~2s of being granted.
+        reconcileTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.manager.reconcile()
+        }
+    }
+
+    // MARK: - Menu
+
+    /// Box for stashing a `Permission` (a value type) in `representedObject` (Any?).
+    private final class PermissionBox: NSObject {
+        let value: Permission
+        init(_ value: Permission) { self.value = value }
+    }
+
+    private func populate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let header = NSMenuItem(title: "WinHub", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        menu.addItem(.separator())
+
+        for module in manager.modules {
+            let item = NSMenuItem(title: module.title,
+                                  action: #selector(toggleModule(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = module.id
+            item.toolTip = module.summary
+            item.state = manager.isEnabled(module) ? .on : .off
+
+            if !module.isAvailable {
+                item.action = nil           // disabled toggle
+                item.title = "\(module.title)  —  coming next"
+            }
+            menu.addItem(item)
+
+            // Surface a missing permission for an enabled module as an actionable row.
+            if manager.isEnabled(module) && module.isAvailable {
+                for permission in module.requiredPermissions where !permission.isGranted {
+                    let warn = NSMenuItem(title: "⚠︎ Grant \(permission.displayName)…",
+                                          action: #selector(grantPermission(_:)), keyEquivalent: "")
+                    warn.target = self
+                    warn.representedObject = PermissionBox(permission)
+                    warn.indentationLevel = 1
+                    menu.addItem(warn)
+                }
+            }
+        }
+
+        menu.addItem(.separator())
+        let quit = NSMenuItem(title: "Quit WinHub", action: #selector(quit), keyEquivalent: "q")
+        quit.target = self
+        menu.addItem(quit)
+    }
+
+    @objc private func toggleModule(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        manager.toggle(id: id)
+    }
+
+    @objc private func grantPermission(_ sender: NSMenuItem) {
+        guard let box = sender.representedObject as? PermissionBox else { return }
+        Permissions.openSettings(for: box.value)
+        switch box.value {
+        case .accessibility:   Permissions.requestAccessibility()
+        case .screenRecording: Permissions.requestScreenRecording()
+        }
+    }
+
+    @objc private func quit() { NSApp.terminate(nil) }
+
+    // Refresh permission rows each time the menu opens.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        manager.reconcile()
+        populate(menu)
+    }
+}
