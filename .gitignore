@@ -1,4 +1,6 @@
 .build/
 *.app/
+*.dmg
+dist/
 .DS_Store
 .swiftpm/

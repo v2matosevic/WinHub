@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .applicationName: AppInfo.name,
             .applicationVersion: AppInfo.version,
             .credits: NSAttributedString(
-                string: "Windows comforts for macOS.\nA hub of small lifestyle tweaks.",
+                string: "Windows comforts for macOS.\nA hub of small lifestyle tweaks.\n\nMade by Version2 · MIT License",
                 attributes: [.font: NSFont.systemFont(ofSize: 11)])
         ])
     }
