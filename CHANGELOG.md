@@ -4,6 +4,15 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-06-03
+
+### Added
+- **Settings window** (menu → Settings…, or ⌘,) — toggle each tweak with inline
+  "grant permission" buttons, manage **start at login**, and build the
+  close-to-quit exclusion list with a normal app picker (no more `defaults write`).
+
+[0.5.0]: https://github.com/v2matosevic/WinHub/releases/tag/v0.5.0
+
 ## [0.4.0] — 2026-06-03
 
 ### Added

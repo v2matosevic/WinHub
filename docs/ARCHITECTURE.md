@@ -93,6 +93,16 @@ edge → left half, right edge → right half, top edge → maximize (to
 window's `AXPosition`/`AXSize` (`WindowAX.setFrame`, position-size-position to
 beat apps that clamp). Coordinate conversions live in `ScreenGeometry`.
 
+## Settings window
+
+A SwiftUI grouped `Form` (`Sources/WinHub/Preferences/`) hosted in an `NSWindow`
+via `NSHostingController`, opened from the menu's "Settings…" item (⌘,) or
+`open WinHub.app --args --settings`. `PreferencesModel` (an `ObservableObject`)
+bridges the view to the shared `ModuleManager`, `LoginItem`, and the
+`closeToQuit.userExclusions` defaults key, so the window and the menu bar stay in
+sync (`manager.onChange` refreshes both). Exclusions are managed with an
+`NSOpenPanel` app picker rather than `defaults write`.
+
 ## Permissions & code signing
 
 Both Dock previews and window raising depend on TCC permissions, and there are

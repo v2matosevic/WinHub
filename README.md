@@ -30,7 +30,7 @@ clutter — it just sits in your status bar.
 - **Close button quits the app** — closing an app's last window quits it,
   Windows-style. It's a graceful quit, so apps with unsaved work still prompt
   you. A built-in safe list (Finder, System Settings, Dock, Control Center)
-  is never quit, and you can exclude any other app.
+  is never quit, and you can exclude any other app from **Settings**.
 - **Dock hover previews** — hover a Dock icon to see live thumbnails of that
   app's windows, like the Windows taskbar. Click a thumbnail to jump straight
   to that window. Minimized windows are shown too, and clicking restores them.
@@ -38,6 +38,8 @@ clutter — it just sits in your status bar.
   Snap-style: left edge for the left half, right edge for the right half, top
   edge to maximize. A preview shows where it'll land before you let go.
 - **Starts at login** and stays out of your way in the menu bar.
+- **Settings window** (⌘,) to toggle tweaks, manage the exclusion list, and grant
+  permissions — no Terminal required.
 
 More tweaks are on the [roadmap](#roadmap) — and the module system makes adding
 one straightforward (see [CONTRIBUTING](CONTRIBUTING.md)).

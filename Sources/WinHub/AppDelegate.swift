@@ -1,14 +1,18 @@
 import AppKit
+import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let manager = ModuleManager()
     private var reconcileTimer: Timer?
+    private lazy var preferencesModel = PreferencesModel(manager: manager)
+    private var prefsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         manager.onChange = { [weak self] in
-            guard let self, let menu = self.statusItem.menu else { return }
-            self.populate(menu)
+            guard let self else { return }
+            if let menu = self.statusItem.menu { self.populate(menu) }
+            self.preferencesModel.refresh()
         }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -35,6 +39,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // so poll: a module flips on within ~2s of being granted.
         reconcileTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.manager.reconcile()
+        }
+
+        // Allow opening Settings directly (e.g. `open WinHub.app --args --settings`).
+        if CommandLine.arguments.contains("--settings") {
+            DispatchQueue.main.async { [weak self] in self?.openPreferences() }
         }
     }
 
@@ -83,6 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
+        let settings = NSMenuItem(title: "Settings…", action: #selector(openPreferences), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
+
         let login = NSMenuItem(title: "Start at login", action: #selector(toggleLoginItem), keyEquivalent: "")
         login.target = self
         login.state = LoginItem.isEnabled ? .on : .off
@@ -115,6 +128,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .accessibility:   Permissions.requestAccessibility()
         case .screenRecording: Permissions.requestScreenRecording()
         }
+    }
+
+    @objc private func openPreferences() {
+        if prefsWindow == nil {
+            let hosting = NSHostingController(rootView: PreferencesView(model: preferencesModel))
+            let window = NSWindow(contentViewController: hosting)
+            window.title = "WinHub Settings"
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            prefsWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        prefsWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func toggleLoginItem() {
