@@ -47,18 +47,21 @@ one straightforward (see [CONTRIBUTING](CONTRIBUTING.md)).
 brew install --cask v2matosevic/tap/winhub
 ```
 
-Homebrew clears the download quarantine for you, so it launches without any
-Gatekeeper prompt.
-
 ### Direct download
 
-1. Grab `WinHub.dmg` from the [latest release](https://github.com/v2matosevic/WinHub/releases).
-2. Open it and drag **WinHub** into **Applications**.
-3. First launch only: **right-click the app → Open** (WinHub isn't notarized by
-   Apple, so a plain double-click shows a warning the first time). After that it
-   opens normally.
+Grab `WinHub.dmg` from the [latest release](https://github.com/v2matosevic/WinHub/releases),
+open it, and drag **WinHub** into **Applications**.
 
-   > Prefer the terminal? `xattr -dr com.apple.quarantine /Applications/WinHub.app`
+### First launch (one time)
+
+WinHub isn't notarized by Apple, so macOS blocks the very first launch
+regardless of how you installed it. Clear it once, either way:
+
+- **Right-click** WinHub in Applications → **Open** → **Open**, or
+- run `xattr -dr com.apple.quarantine /Applications/WinHub.app`
+
+After that it launches normally. A warning-free double-click would require Apple
+notarization (a paid Apple Developer account) — on the roadmap if there's demand.
 
 ## Permissions
 
