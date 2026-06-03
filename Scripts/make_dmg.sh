@@ -23,7 +23,7 @@ ln -s /Applications "$STAGE/Applications"
 mkdir -p "$DIST"
 rm -f "$DMG"
 
-echo "▸ Building $DMG…"
+echo "▸ Building ${DMG}…"
 hdiutil create \
     -volname "$APP_NAME" \
     -srcfolder "$STAGE" \
