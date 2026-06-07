@@ -4,6 +4,19 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] — 2026-06-07
+
+### Fixed
+- **Close-to-quit no longer kills Chromium browsers on fullscreen-video Esc.**
+  HTML5 fullscreen video opens a separate window that's destroyed when you press
+  Esc; mid-transition the real browser window briefly drops out of the
+  Accessibility window list, so the old single check read "no windows" and quit
+  the whole browser (e.g. Brave/Chrome). The module now re-confirms the window
+  list is *stably* empty (~1s) before quitting — any window that reappears stands
+  the quit down.
+
+[0.5.1]: https://github.com/v2matosevic/WinHub/releases/tag/v0.5.1
+
 ## [0.5.0] — 2026-06-03
 
 ### Added

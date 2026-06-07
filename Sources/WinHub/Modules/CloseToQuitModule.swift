@@ -140,24 +140,38 @@ final class CloseToQuitModule: HubModule {
                                           Unmanaged.passUnretained(watcher).toOpaque())
             }
         case kAXUIElementDestroyedNotification:
-            // A window went away. Let AX settle, then quit the app if nothing standard remains.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self, weak watcher] in
-                guard let self, let watcher else { return }
-                self.quitIfNoStandardWindows(watcher: watcher)
-            }
+            // A window went away — but this also fires mid-transition when an app
+            // tears down a transient window without closing for real. The worst
+            // offender is HTML5 fullscreen video: Chromium browsers (Brave/Chrome)
+            // open a *separate* fullscreen window and destroy it when you press
+            // Esc, during which the real browser window briefly drops out of the
+            // AX window list. A single check would read "no windows" and quit the
+            // whole browser. So re-confirm the list stays empty before quitting.
+            confirmLastWindowClosed(watcher: watcher)
         default:
             break
         }
     }
 
-    private func quitIfNoStandardWindows(watcher: AppWatcher) {
-        guard isRunning,
-              let app = NSRunningApplication(processIdentifier: watcher.pid),
-              !app.isTerminated,
-              !denylist.contains(watcher.bundleID) else { return }
+    /// Quit only if the app's standard-window list is *stably* empty. We re-poll a
+    /// few times (~1s total); any window that appears — e.g. the browser window
+    /// returning after a fullscreen-video Esc — aborts the quit. This rides over
+    /// the transient empty readings that fullscreen/space transitions produce.
+    private func confirmLastWindowClosed(watcher: AppWatcher, remaining: Int = 6) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, weak watcher] in
+            guard let self, let watcher, self.isRunning,
+                  let app = NSRunningApplication(processIdentifier: watcher.pid),
+                  !app.isTerminated,
+                  !self.denylist.contains(watcher.bundleID) else { return }
 
-        if standardWindows(of: watcher.appElement).isEmpty {
-            app.terminate()   // graceful: the app can still present a save dialog
+            // A standard window is present (or came back): not a last-window close.
+            guard self.standardWindows(of: watcher.appElement).isEmpty else { return }
+
+            if remaining > 1 {
+                self.confirmLastWindowClosed(watcher: watcher, remaining: remaining - 1)
+            } else {
+                app.terminate()   // graceful: the app can still present a save dialog
+            }
         }
     }
 
