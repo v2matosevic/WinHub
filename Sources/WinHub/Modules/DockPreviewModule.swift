@@ -32,12 +32,14 @@ final class DockPreviewModule: HubModule {
         NSLog("[WinHub.dock] started — polling for Dock hovers")
 
         panel.onSelect = { [weak self] selection in self?.select(selection) }
+        panel.onClose  = { [weak self] selection in self?.close(selection) }
 
         // Poll the cursor instead of an event monitor: reading the cursor location
         // needs no extra permission, and ~16 fps is plenty for hover detection.
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { [weak self] _ in
             self?.tick()
         }
+        pollTimer?.tolerance = 0.02
     }
 
     func stop() {
@@ -54,8 +56,7 @@ final class DockPreviewModule: HubModule {
     // MARK: - Hover loop
 
     private func tick() {
-        guard let location = CGEvent(source: nil)?.location else { return }
-        let cocoa = DockAccessibility.cocoaPoint(fromTopLeft: location)
+        let cocoa = NSEvent.mouseLocation
 
         // Over the panel itself? Keep it open.
         if panel.isVisible && panel.frame.insetBy(dx: -8, dy: -8).contains(cocoa) {
@@ -63,7 +64,15 @@ final class DockPreviewModule: HubModule {
             return
         }
 
-        if let tile = DockAccessibility.tile(atTopLeft: location),
+        // Cheap gate: unless the cursor is in the band along the Dock edge (or a
+        // preview is up and may need hiding), skip the AX hit-test entirely — the
+        // idle cost of this module is then a point comparison per tick.
+        if !DockAccessibility.isInDockBand(cocoaPoint: cocoa) {
+            if currentApp != nil || panel.isVisible { requestHide() }
+            return
+        }
+
+        if let tile = DockAccessibility.tile(atTopLeft: ScreenGeometry.topLeftPoint(fromCocoa: cocoa)),
            let app = tile.runningApp, app.activationPolicy == .regular {
             pendingHide = false
             if app.processIdentifier != currentApp?.processIdentifier {
@@ -121,7 +130,20 @@ final class DockPreviewModule: HubModule {
         }
     }
 
-    // MARK: - Raising a window
+    // MARK: - Raising / closing a window
+
+    /// The AX window a thumbnail stands for — matched by title, first window as the
+    /// fallback (AX has no public bridge to a CGWindowID).
+    private func axWindow(for selection: DockSelection, in axApp: AXUIElement) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) == .success,
+              let windows = value as? [AXUIElement] else { return nil }
+        return windows.first { window in
+            var titleValue: CFTypeRef?
+            AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleValue)
+            return (titleValue as? String) == selection.title
+        } ?? windows.first
+    }
 
     private func select(_ selection: DockSelection) {
         panel.orderOut(nil)
@@ -132,22 +154,22 @@ final class DockPreviewModule: HubModule {
         app.activate()
 
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) == .success,
-              let windows = value as? [AXUIElement] else { return }
-
-        // Match by title; fall back to the first window.
-        let match = windows.first { window in
-            var titleValue: CFTypeRef?
-            AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleValue)
-            return (titleValue as? String) == selection.title
-        } ?? windows.first
-
-        if let match {
+        if let match = axWindow(for: selection, in: axApp) {
             // Un-minimize first (no-op if it wasn't), then raise and focus.
             AXUIElementSetAttributeValue(match, kAXMinimizedAttribute as CFString, false as CFTypeRef)
             AXUIElementPerformAction(match, kAXRaiseAction as CFString)
             AXUIElementSetAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, match)
         }
+    }
+
+    /// Close the window behind a thumbnail's ⊗ by pressing its AX close button —
+    /// the graceful path, so unsaved-work prompts still appear.
+    private func close(_ selection: DockSelection) {
+        let axApp = AXUIElementCreateApplication(selection.app.processIdentifier)
+        guard let window = axWindow(for: selection, in: axApp) else { return }
+        var button: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXCloseButtonAttribute as CFString, &button) == .success,
+              let button else { return }
+        AXUIElementPerformAction(button as! AXUIElement, kAXPressAction as CFString)
     }
 }

@@ -22,14 +22,30 @@ enum DockAccessibility {
         "AXURLDockItem", "AXDocumentDockItem",
     ]
 
-    static func tile(atTopLeft point: CGPoint) -> Tile? {
+    /// The Dock's AX application element, cached — resolving the running app and
+    /// rebuilding the element on every hover poll is wasted work. Cleared (and
+    /// re-resolved on the next call) if the Dock restarts.
+    private static var cachedDockElement: AXUIElement?
+
+    private static func dockElement() -> AXUIElement? {
+        if let cachedDockElement { return cachedDockElement }
         guard let dock = NSRunningApplication
             .runningApplications(withBundleIdentifier: "com.apple.dock").first else { return nil }
+        let element = AXUIElementCreateApplication(dock.processIdentifier)
+        cachedDockElement = element
+        return element
+    }
 
-        let dockElement = AXUIElementCreateApplication(dock.processIdentifier)
+    static func tile(atTopLeft point: CGPoint) -> Tile? {
+        guard let dockElement = dockElement() else { return nil }
+
         var hit: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(dockElement, Float(point.x), Float(point.y), &hit) == .success,
-              let hit else { return nil }
+        let result = AXUIElementCopyElementAtPosition(dockElement, Float(point.x), Float(point.y), &hit)
+        if result == .invalidUIElement || result == .cannotComplete {
+            cachedDockElement = nil   // Dock likely restarted — re-resolve next time
+            return nil
+        }
+        guard result == .success, let hit else { return nil }
 
         // Don't hard-gate on the app subrole — the exact constant is easy to get wrong
         // across macOS versions. Skip only the obvious non-app tiles; everything else
@@ -45,12 +61,37 @@ enum DockAccessibility {
                     orientation: orientation())
     }
 
+    private static let dockDefaults = UserDefaults(suiteName: "com.apple.dock")
+
     /// Dock edge, read from the Dock's own preferences (defaults to bottom).
     static func orientation() -> DockOrientation {
-        switch UserDefaults(suiteName: "com.apple.dock")?.string(forKey: "orientation") {
+        switch dockDefaults?.string(forKey: "orientation") {
         case "left":  return .left
         case "right": return .right
         default:      return .bottom
+        }
+    }
+
+    /// Cheap pure-geometry test: is this Cocoa point inside the band along the Dock
+    /// edge where a Dock tile could possibly be? Lets the hover poll skip the AX
+    /// hit-test (an IPC into the Dock process) for the vast majority of ticks.
+    /// The band is the screen-frame/visibleFrame difference on the Dock edge, with a
+    /// generous floor so magnification and auto-hide reveal still get hit-tested.
+    static func isInDockBand(cocoaPoint point: CGPoint) -> Bool {
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) ?? NSScreen.main
+        else { return false }
+        let frame = screen.frame
+        let visible = screen.visibleFrame
+        switch orientation() {
+        case .bottom:
+            let band = max(visible.minY - frame.minY, 140)
+            return point.y <= frame.minY + band
+        case .left:
+            let band = max(visible.minX - frame.minX, 140)
+            return point.x <= frame.minX + band
+        case .right:
+            let band = max(frame.maxX - visible.maxX, 140)
+            return point.x >= frame.maxX - band
         }
     }
 
@@ -67,11 +108,6 @@ enum DockAccessibility {
                   (minimized as? Bool) == true else { return nil }
             return string(window, kAXTitleAttribute) ?? ""
         }
-    }
-
-    /// Convert a cursor point (top-left origin) to Cocoa screen coordinates.
-    static func cocoaPoint(fromTopLeft point: CGPoint) -> CGPoint {
-        CGPoint(x: point.x, y: primaryHeight - point.y)
     }
 
     // MARK: - Helpers

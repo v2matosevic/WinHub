@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private let manager = ModuleManager()
     private var reconcileTimer: Timer?
@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             if let menu = self.statusItem.menu { self.populate(menu) }
             self.preferencesModel.refresh()
+            self.syncReconcileTimer()
         }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -34,16 +35,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         manager.bootstrap()
         populate(menu)
-
-        // Permissions are granted out-of-process (System Settings) with no callback,
-        // so poll: a module flips on within ~2s of being granted.
-        reconcileTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.manager.reconcile()
-        }
+        syncReconcileTimer()
 
         // Allow opening Settings directly (e.g. `open WinHub.app --args --settings`).
         if CommandLine.arguments.contains("--settings") {
             DispatchQueue.main.async { [weak self] in self?.openPreferences() }
+        }
+    }
+
+    // MARK: - Reconcile timer
+
+    /// Permissions are granted out-of-process (System Settings) with no callback, so
+    /// poll — but only while an enabled module is actually waiting on one. Once
+    /// everything is running the timer stops, so idle WinHub holds no timers here.
+    /// `onChange` re-syncs it whenever a toggle creates (or clears) pending work.
+    private func syncReconcileTimer() {
+        if manager.hasPendingModules {
+            guard reconcileTimer == nil else { return }
+            let timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                self.manager.reconcile()   // fires onChange (→ re-sync) if anything started
+                if !self.manager.hasPendingModules { self.syncReconcileTimer() }
+            }
+            timer.tolerance = 0.5
+            reconcileTimer = timer
+        } else {
+            reconcileTimer?.invalidate()
+            reconcileTimer = nil
         }
     }
 
@@ -105,6 +123,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         about.target = self
         menu.addItem(about)
 
+        let updates = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        updates.target = self
+        menu.addItem(updates)
+
         // Handy after granting Screen Recording — ScreenCaptureKit only sees the grant
         // on a fresh launch.
         let relaunch = NSMenuItem(title: "Relaunch WinHub", action: #selector(relaunchApp), keyEquivalent: "")
@@ -137,11 +159,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             window.title = "WinHub Settings"
             window.styleMask = [.titled, .closable, .miniaturizable]
             window.isReleasedWhenClosed = false
+            window.delegate = self
             window.center()
             prefsWindow = window
         }
+        // An .accessory app can't reliably make a normal window key — become a
+        // regular app while Settings is open, back to accessory when it closes.
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         prefsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === prefsWindow else { return }
+        NSApp.setActivationPolicy(.accessory)
     }
 
     @objc private func toggleLoginItem() {
@@ -158,6 +189,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 string: "Windows comforts for macOS.\nA hub of small lifestyle tweaks.\n\nMade by Version2 · MIT License",
                 attributes: [.font: NSFont.systemFont(ofSize: 11)])
         ])
+    }
+
+    @objc private func checkForUpdates() {
+        UpdateChecker.checkInteractively()
     }
 
     @objc private func relaunchApp() {

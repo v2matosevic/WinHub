@@ -27,8 +27,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>${APP_NAME}</string>
   <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
   <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
-  <key>CFBundleVersion</key><string>8</string>
-  <key>CFBundleShortVersionString</key><string>0.6.0</string>
+  <key>CFBundleVersion</key><string>9</string>
+  <key>CFBundleShortVersionString</key><string>0.7.0</string>
   <key>CFBundleExecutable</key><string>${APP_NAME}</string>
   <key>CFBundleIconFile</key><string>${APP_NAME}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -60,7 +60,7 @@ else
 fi
 
 echo "▸ Code signing ($([ "$SIGN_ID" = "-" ] && echo ad-hoc || echo "$SIGN_ID"))…"
-codesign --force --deep --sign "$SIGN_ID" "$APP_DIR" >/dev/null 2>&1
+codesign --force --sign "$SIGN_ID" "$APP_DIR" >/dev/null 2>&1
 codesign --verify --verbose=1 "$APP_DIR" 2>&1 | sed 's/^/    /' || true
 
 echo "✓ Built: $APP_DIR"

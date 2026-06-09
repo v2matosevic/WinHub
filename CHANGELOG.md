@@ -4,6 +4,35 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-06-09
+
+### Added
+- **Snap got the rest of Aero Snap.** Corners snap to quarters (Windows 11 style),
+  dragging a snapped window away **restores its pre-snap size** at the drop point,
+  and **⌃⌥ + arrows** snap the focused window from the keyboard — ⌃⌥← / ⌃⌥→ for
+  halves, ⌃⌥↑ to maximize, ⌃⌥↓ to restore.
+- **Dock previews can close windows** — hover a thumbnail and click its ⊗ to close
+  that window gracefully (save prompts still appear). Thumbnails also highlight on
+  hover.
+- **Check for Updates…** menu item — compares against the latest GitHub release and
+  links the download. No background network traffic; it only runs when you ask.
+
+### Changed
+- **Much lighter at idle.** The Dock-hover poll now does a cheap geometry check and
+  only talks to the Dock when the cursor is actually near it; window-snap tracking
+  is driven by drag events instead of a per-click probe and a timer; and the
+  permission-poll timer stops once every enabled tweak is running. Snapping no
+  longer misfires on the seam between two displays, and snap previews/thumbnail
+  captures got faster (thumbnails now capture concurrently).
+
+### Fixed
+- The Settings window can actually take keyboard focus when opened from the menu
+  bar (WinHub becomes a regular app while it's open, accessory again on close).
+- Granting a permission while the Settings window is open now clears its
+  "Grant permission…" button immediately.
+
+[0.7.0]: https://github.com/v2matosevic/WinHub/releases/tag/v0.7.0
+
 ## [0.6.0] — 2026-06-09
 
 ### Added

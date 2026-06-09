@@ -35,20 +35,28 @@ final class WindowThumbnailService {
             }
             .sorted { $0.windowID < $1.windowID }
 
-        var shots: [WindowShot] = []
-        for window in windows {
-            let scale = min(1, maxDimension / max(window.frame.width, window.frame.height))
-            let config = SCStreamConfiguration()
-            config.width  = max(1, Int(window.frame.width  * scale * 2))   // 2x for crispness
-            config.height = max(1, Int(window.frame.height * scale * 2))
-            config.showsCursor = false
-            config.ignoreShadowsSingleWindow = true
+        // Capture concurrently — panel latency is the slowest single window, not the
+        // sum. Order is restored by the windowID sort below.
+        let shots = await withTaskGroup(of: WindowShot?.self) { group in
+            for window in windows {
+                group.addTask {
+                    let scale = min(1, maxDimension / max(window.frame.width, window.frame.height))
+                    let config = SCStreamConfiguration()
+                    config.width  = max(1, Int(window.frame.width  * scale * 2))   // 2x for crispness
+                    config.height = max(1, Int(window.frame.height * scale * 2))
+                    config.showsCursor = false
+                    config.ignoreShadowsSingleWindow = true
 
-            let filter = SCContentFilter(desktopIndependentWindow: window)
-            if let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) {
-                shots.append(WindowShot(windowID: window.windowID, title: window.title ?? "", image: image))
+                    let filter = SCContentFilter(desktopIndependentWindow: window)
+                    guard let image = try? await SCScreenshotManager
+                        .captureImage(contentFilter: filter, configuration: config) else { return nil }
+                    return WindowShot(windowID: window.windowID, title: window.title ?? "", image: image)
+                }
             }
+            var collected: [WindowShot] = []
+            for await shot in group { if let shot { collected.append(shot) } }
+            return collected
         }
-        return shots
+        return shots.sorted { $0.windowID < $1.windowID }
     }
 }

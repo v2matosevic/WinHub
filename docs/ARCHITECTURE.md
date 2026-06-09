@@ -13,6 +13,7 @@ AppDelegate.swift     status item, menu, login item, permission rows, reconcile 
 Permissions.swift     Permission enum (.accessibility / .screenRecording) + prompts
 AppInfo.swift         name / version from the bundle
 LoginItem.swift       launch-at-login via SMAppService
+UpdateChecker.swift   manual "Check for Updates…" against GitHub releases
 
 Modules/
   Module.swift        the HubModule protocol
@@ -70,28 +71,39 @@ The AXObserver callback is a C function pointer, so it's a free function; the
 ### DockPreviewModule (Accessibility + Screen Recording)
 
 Polls the cursor at ~16 fps (reading the cursor location needs no extra
-permission), hit-tests the Dock with
-`AXUIElementCopyElementAtPosition` on `com.apple.dock`, and resolves the tile to
-a running app. On hover it captures that app's on-screen windows via
-`SCScreenshotManager.captureImage` and shows them in a borderless,
-non-activating `DockPreviewPanel`. Clicking a thumbnail raises the window via AX
-(`kAXRaiseAction`), un-minimizing it first if needed. Minimized windows are
-listed with the app icon as a placeholder, since macOS can't live-capture them.
-The panel anchors above the tile (bottom Dock) or beside it (left/right Dock).
+permission), but only hit-tests the Dock — `AXUIElementCopyElementAtPosition`
+on a cached `com.apple.dock` element — when the cursor is inside the geometric
+band along the Dock edge (`DockAccessibility.isInDockBand`), so an idle tick is
+just a point comparison. On hover it captures that app's on-screen windows
+concurrently via `SCScreenshotManager.captureImage` and shows them in a
+borderless, non-activating `DockPreviewPanel`. Clicking a thumbnail raises the
+window via AX (`kAXRaiseAction`), un-minimizing it first if needed; hovering a
+thumbnail reveals an ⊗ that closes that window by pressing its AX close button
+(graceful — save prompts still appear). Minimized windows are listed with the
+app icon as a placeholder, since macOS can't live-capture them. The panel
+anchors above the tile (bottom Dock) or beside it (left/right Dock).
 
 ### SnapModule (Accessibility)
 
-Windows-style Aero Snap. A global monitor catches `leftMouseDown`/`leftMouseUp`;
-between them a ~20 fps timer polls the cursor (`Sources/WinHub/Snap/`). On
-mouse-down it captures the window under the cursor via
-`AXUIElementCopyElementAtPosition` (climbing to the `AXWindow` ancestor) and its
-start position. The module engages only once that window actually moves (so plain
-clicks and in-window text drags are ignored). While dragging near a screen edge it
-shows a translucent, click-through `SnapOverlay` previewing the target — left
-edge → left half, right edge → right half, top edge → maximize (to
-`visibleFrame`, so the menu bar and Dock are respected). On release it sets the
-window's `AXPosition`/`AXSize` (`WindowAX.setFrame`, position-size-position to
-beat apps that clamp). Coordinate conversions live in `ScreenGeometry`.
+Windows-style Aero Snap (`Sources/WinHub/Snap/`). Drag-driven: a global
+`leftMouseDragged` monitor (throttled to ~20 Hz) resolves the window under the
+cursor once per drag session via `AXUIElementCopyElementAtPosition` (climbing to
+the `AXWindow` ancestor) — plain clicks cost nothing. The module engages only
+once that window actually moves (so in-window text drags are ignored). While
+dragging near a screen edge it shows a translucent, click-through `SnapOverlay`
+previewing the target — left/right edge → half, a corner (within 120 pt of the
+top/bottom of a side edge) → quarter, top edge → maximize (to `visibleFrame`, so
+the menu bar and Dock are respected). Edges shared with another display don't
+count (no snapping at the seam between monitors). On release it sets the window's
+`AXPosition`/`AXSize` (`WindowAX.setFrame`, position-size-position to beat apps
+that clamp).
+
+Every snap is remembered in a small registry (window element → original +
+snapped frame), which powers the other half of Aero Snap: dragging a snapped
+window away restores its pre-snap size at the drop point. `SnapHotkeys`
+(Carbon `RegisterEventHotKey`, no event tap) adds keyboard snapping on the
+focused window: ⌃⌥← / ⌃⌥→ halves, ⌃⌥↑ maximize, ⌃⌥↓ restore. Coordinate
+conversions live in `ScreenGeometry`.
 
 ## Settings window
 

@@ -14,8 +14,18 @@ enum ScreenGeometry {
         CGPoint(x: point.x, y: primaryHeight - point.y)
     }
 
+    /// An AppKit Cocoa point (bottom-left) → cursor/AX point (top-left origin).
+    static func topLeftPoint(fromCocoa point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x, y: primaryHeight - point.y)
+    }
+
     /// An AppKit Cocoa rect (bottom-left) → Accessibility rect (top-left origin).
     static func axRect(fromCocoa rect: CGRect) -> CGRect {
+        CGRect(x: rect.minX, y: primaryHeight - rect.maxY, width: rect.width, height: rect.height)
+    }
+
+    /// An Accessibility rect (top-left origin) → AppKit Cocoa rect (bottom-left).
+    static func cocoaRect(fromAX rect: CGRect) -> CGRect {
         CGRect(x: rect.minX, y: primaryHeight - rect.maxY, width: rect.width, height: rect.height)
     }
 

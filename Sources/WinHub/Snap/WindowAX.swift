@@ -19,12 +19,33 @@ enum WindowAX {
         return nil
     }
 
+    /// The frontmost app's focused window, for keyboard-driven snapping.
+    static func focusedWindow() -> AXUIElement? {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &value) == .success,
+              let value else { return nil }
+        return (value as! AXUIElement)
+    }
+
     static func position(of window: AXUIElement) -> CGPoint? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &value) == .success else { return nil }
         var point = CGPoint.zero
         AXValueGetValue(value as! AXValue, .cgPoint, &point)
         return point
+    }
+
+    /// The window's frame in AX (top-left origin) coordinates.
+    static func frame(of window: AXUIElement) -> CGRect? {
+        var sizeValue: CFTypeRef?
+        guard let position = position(of: window),
+              AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeValue) == .success
+        else { return nil }
+        var size = CGSize.zero
+        AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+        return CGRect(origin: position, size: size)
     }
 
     /// Move and resize a window to a Cocoa (bottom-left) rect. Position is set

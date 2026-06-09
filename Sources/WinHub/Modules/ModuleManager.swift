@@ -51,7 +51,7 @@ final class ModuleManager {
     }
 
     /// Start any enabled-but-not-running module whose permissions are now granted.
-    /// Returns true if anything actually started (so the caller can refresh the UI).
+    /// Fires `onChange` (and returns true) if anything actually started.
     @discardableResult
     func reconcile() -> Bool {
         var changed = false
@@ -61,7 +61,14 @@ final class ModuleManager {
                 changed = changed || module.isRunning
             }
         }
+        if changed { onChange?() }
         return changed
+    }
+
+    /// True while an enabled module is waiting (usually on a permission) — i.e.
+    /// while polling `reconcile()` can still achieve something.
+    var hasPendingModules: Bool {
+        modules.contains { isEnabled($0) && $0.isAvailable && !$0.isRunning }
     }
 
     private func startIfPermitted(_ module: HubModule) {
