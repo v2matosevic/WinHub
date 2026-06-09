@@ -33,17 +33,24 @@ clutter — it just sits in your status bar.
   is never quit, and you can exclude any other app from **Settings**.
 - **Dock hover previews** — hover a Dock icon to see live thumbnails of that
   app's windows, like the Windows taskbar. Click a thumbnail to jump straight
-  to that window. Minimized windows are shown too, and clicking restores them.
+  to that window, or click its **⊗** to close that window (gracefully — unsaved
+  work still prompts). Minimized windows are shown too, and clicking restores
+  them.
 - **Snap windows to edges** — drag a window to a screen edge to snap it, Aero
-  Snap-style: left edge for the left half, right edge for the right half, top
-  edge to maximize. A preview shows where it'll land before you let go.
+  Snap-style: left/right edge for half the screen, a **corner for a quarter**,
+  top edge to maximize. A preview shows where it'll land before you let go, and
+  dragging a snapped window away **restores its original size** — just like
+  Windows. Prefer the keyboard? **⌃⌥←/→** for halves, **⌃⌥↑** to maximize,
+  **⌃⌥↓** to restore.
 - **Snap icons to a grid** — makes macOS's "Snap to Grid" the default everywhere,
   on the desktop and in Finder icon views, so files always line up to a tidy grid.
   On by default; folders you've individually arranged keep their own layout, and
   turning it off restores what you had. No permissions needed.
-- **Starts at login** and stays out of your way in the menu bar.
+- **Starts at login** and stays out of your way in the menu bar — and out of your
+  battery's: when you're not using a tweak, WinHub's idle cost is near zero.
 - **Settings window** (⌘,) to toggle tweaks, manage the exclusion list, and grant
-  permissions — no Terminal required.
+  permissions — no Terminal required. **Check for Updates…** in the menu tells you
+  when a new version is out.
 
 More tweaks are on the [roadmap](#roadmap) — and the module system makes adding
 one straightforward (see [CONTRIBUTING](CONTRIBUTING.md)).
@@ -113,10 +120,9 @@ and how to add a module.
 
 ## Roadmap
 
-- Quarter-tiling (corner snap) and keyboard snap shortcuts
 - Alt+Tab per-window switching
 - Cut & paste files in Finder (⌘X)
-- A real preferences window (exclusions, hover delay)
+- Apple notarization for warning-free installs
 
 Got an idea? [Open an issue](https://github.com/v2matosevic/WinHub/issues).
 
