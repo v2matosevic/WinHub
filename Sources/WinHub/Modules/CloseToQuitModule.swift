@@ -9,6 +9,8 @@ private final class AppWatcher {
     let appElement: AXUIElement
     var observer: AXObserver?
     weak var module: CloseToQuitModule?
+    /// When this app last reported a window being minimized (miniaturize event).
+    var lastMiniaturizeAt: Date?
 
     init(pid: pid_t, bundleID: String, module: CloseToQuitModule) {
         self.pid = pid
@@ -110,7 +112,11 @@ final class CloseToQuitModule: HubModule {
 
         // New windows on this app — we register destruction-watchers as they appear.
         AXObserverAddNotification(observer, watcher.appElement, kAXWindowCreatedNotification as CFString, refcon)
-        // ...and watch the windows that already exist.
+        // A window being minimized — registered on the app element, so it fires for
+        // every window (current and future) without per-window bookkeeping. This is
+        // how we tell a minimize apart from a close (see `confirmLastWindowClosed`).
+        AXObserverAddNotification(observer, watcher.appElement, kAXWindowMiniaturizedNotification as CFString, refcon)
+        // ...and watch the windows that already exist for destruction.
         for window in standardWindows(of: watcher.appElement) {
             AXObserverAddNotification(observer, window, kAXUIElementDestroyedNotification as CFString, refcon)
         }
@@ -139,6 +145,11 @@ final class CloseToQuitModule: HubModule {
                 AXObserverAddNotification(observer, element, kAXUIElementDestroyedNotification as CFString,
                                           Unmanaged.passUnretained(watcher).toOpaque())
             }
+        case kAXWindowMiniaturizedNotification:
+            // A window was minimized — that is never a "close". Remember it so a
+            // destroyed-notification fired by the same minimize transition stands
+            // the quit down.
+            watcher.lastMiniaturizeAt = Date()
         case kAXUIElementDestroyedNotification:
             // A window went away — but this also fires mid-transition when an app
             // tears down a transient window without closing for real. The worst
@@ -164,8 +175,17 @@ final class CloseToQuitModule: HubModule {
                   !app.isTerminated,
                   !self.denylist.contains(watcher.bundleID) else { return }
 
-            // A standard window is present (or came back): not a last-window close.
-            guard self.standardWindows(of: watcher.appElement).isEmpty else { return }
+            // A window was minimized in the last few seconds: this isn't a close, so
+            // never quit (core Windows behavior — minimizing leaves the app on the
+            // taskbar). The miniaturize event is the *reliable* signal here: on
+            // minimize some apps (Lightroom Classic) tear down their windows and
+            // briefly report an empty AX window list, which the old check misread as
+            // a last-window close. The window list churns; the miniaturize event does
+            // not. The 5s window comfortably covers the destroy/confirm transition.
+            if let m = watcher.lastMiniaturizeAt, Date().timeIntervalSince(m) < 5 { return }
+
+            // A standard or minimized window is present (or came back): not a close.
+            guard !self.hasOpenWindows(of: watcher.appElement) else { return }
 
             if remaining > 1 {
                 self.confirmLastWindowClosed(watcher: watcher, remaining: remaining - 1)
@@ -183,6 +203,26 @@ final class CloseToQuitModule: HubModule {
         guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
               let windows = value as? [AXUIElement] else { return [] }
         return windows.filter { isStandardWindow($0) }
+    }
+
+    /// True while the app still has a window that should *stand down* a quit: a
+    /// visible standard window, or any minimized one. A minimized window is not a
+    /// closed window, so it keeps the app alive (Windows-style). Some apps —
+    /// Lightroom Classic among them — drop a window's `AXStandardWindow` subrole the
+    /// moment it's minimized, which is why we test `AXMinimized` across every window
+    /// instead of relying on the subrole filter alone.
+    private func hasOpenWindows(of appElement: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
+              let windows = value as? [AXUIElement] else { return false }
+        return windows.contains { isStandardWindow($0) || isMinimized($0) }
+    }
+
+    private func isMinimized(_ window: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &value) == .success
+        else { return false }
+        return (value as? Bool) ?? false
     }
 
     private func isStandardWindow(_ window: AXUIElement) -> Bool {

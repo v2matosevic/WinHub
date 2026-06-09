@@ -37,6 +37,10 @@ clutter — it just sits in your status bar.
 - **Snap windows to edges** — drag a window to a screen edge to snap it, Aero
   Snap-style: left edge for the left half, right edge for the right half, top
   edge to maximize. A preview shows where it'll land before you let go.
+- **Snap icons to a grid** — makes macOS's "Snap to Grid" the default everywhere,
+  on the desktop and in Finder icon views, so files always line up to a tidy grid.
+  On by default; folders you've individually arranged keep their own layout, and
+  turning it off restores what you had. No permissions needed.
 - **Starts at login** and stays out of your way in the menu bar.
 - **Settings window** (⌘,) to toggle tweaks, manage the exclusion list, and grant
   permissions — no Terminal required.

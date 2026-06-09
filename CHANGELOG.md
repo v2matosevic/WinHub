@@ -4,6 +4,25 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-06-09
+
+### Added
+- **Snap icons to a grid** module (on by default) — forces macOS's "Snap to Grid"
+  icon arrangement as the default everywhere: the desktop and Finder icon views,
+  so files always line up to a tidy grid. Folders you've individually customised
+  keep their own arrangement, and turning the tweak off restores whatever you had
+  before. No permissions needed.
+
+### Fixed
+- **Close-to-quit no longer quits apps when you _minimize_ them.** Minimizing some
+  apps — Lightroom Classic is the clearest case — makes their window briefly drop
+  its `AXStandardWindow` subrole and the Accessibility window list churn (Lightroom
+  momentarily reports *zero* windows), which the old check misread as a last-window
+  close. WinHub now watches the window-minimized event directly and stands the quit
+  down: minimizing keeps the app alive, Windows-style; only a real close quits it.
+
+[0.6.0]: https://github.com/v2matosevic/WinHub/releases/tag/v0.6.0
+
 ## [0.5.1] — 2026-06-07
 
 ### Fixed
