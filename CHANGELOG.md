@@ -4,6 +4,28 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] — 2026-06-10
+
+### Added
+- **Dynamic notch** module (off by default) — a Boring Notch-inspired hub around
+  the camera notch:
+  - **Music live activity**: while something plays, the closed notch grows two
+    wings — album art on the left, an equalizer on the right.
+  - **Hover (or click) to expand** into a full player: artwork, title/artist,
+    live scrubber with seek, and previous/play-pause/next controls. Spring
+    animations and hover delay tuned to match the Boring Notch feel.
+  - **Shelf**: drop files, links, or text onto the notch to stash them; drag
+    items back out anywhere, double-click to open, AirDrop everything in one
+    click. Items persist across launches. Dragging something toward the notch
+    pops the shelf open automatically.
+  - Works on screens without a notch too (renders as a menu-bar-height pill on
+    the main display when no notch hardware is present).
+  - Now-playing data flows through the vendored
+    [MediaRemoteAdapter](https://github.com/ungive/mediaremote-adapter)
+    (BSD-3-Clause, see `THIRD_PARTY_LICENSES`) — the post-macOS-15.4 way to read
+    MediaRemote state. No permissions required; the notch window is fully
+    click-through outside its visible shape.
+
 ## [0.7.0] — 2026-06-09
 
 ### Added

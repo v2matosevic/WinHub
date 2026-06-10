@@ -19,6 +19,18 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BUILD_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 [ -f "$ROOT/Resources/$APP_NAME.icns" ] && cp "$ROOT/Resources/$APP_NAME.icns" "$APP_DIR/Contents/Resources/$APP_NAME.icns"
 
+# Dynamic-notch media stack: vendored MediaRemoteAdapter (BSD-3-Clause,
+# github.com/ungive/mediaremote-adapter — see THIRD_PARTY_LICENSES). The perl
+# launcher + test client go to Resources, the framework to Frameworks.
+ADAPTER="$ROOT/Resources/MediaRemoteAdapter"
+if [ -d "$ADAPTER" ]; then
+    mkdir -p "$APP_DIR/Contents/Frameworks"
+    cp "$ADAPTER/mediaremote-adapter.pl" "$APP_DIR/Contents/Resources/"
+    cp "$ADAPTER/MediaRemoteAdapterTestClient" "$APP_DIR/Contents/Resources/"
+    cp -R "$ADAPTER/MediaRemoteAdapter.framework" "$APP_DIR/Contents/Frameworks/"
+fi
+[ -f "$ROOT/THIRD_PARTY_LICENSES" ] && cp "$ROOT/THIRD_PARTY_LICENSES" "$APP_DIR/Contents/Resources/"
+
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -27,8 +39,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>${APP_NAME}</string>
   <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
   <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
-  <key>CFBundleVersion</key><string>9</string>
-  <key>CFBundleShortVersionString</key><string>0.7.0</string>
+  <key>CFBundleVersion</key><string>10</string>
+  <key>CFBundleShortVersionString</key><string>0.8.0</string>
   <key>CFBundleExecutable</key><string>${APP_NAME}</string>
   <key>CFBundleIconFile</key><string>${APP_NAME}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -60,6 +72,13 @@ else
 fi
 
 echo "▸ Code signing ($([ "$SIGN_ID" = "-" ] && echo ad-hoc || echo "$SIGN_ID"))…"
+# Nested code first, outside-in order at the end.
+if [ -d "$APP_DIR/Contents/Frameworks/MediaRemoteAdapter.framework" ]; then
+    codesign --force --sign "$SIGN_ID" "$APP_DIR/Contents/Frameworks/MediaRemoteAdapter.framework" >/dev/null 2>&1
+fi
+if [ -f "$APP_DIR/Contents/Resources/MediaRemoteAdapterTestClient" ]; then
+    codesign --force --sign "$SIGN_ID" "$APP_DIR/Contents/Resources/MediaRemoteAdapterTestClient" >/dev/null 2>&1
+fi
 codesign --force --sign "$SIGN_ID" "$APP_DIR" >/dev/null 2>&1
 codesign --verify --verbose=1 "$APP_DIR" 2>&1 | sed 's/^/    /' || true
 

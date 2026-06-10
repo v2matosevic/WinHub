@@ -5,6 +5,12 @@ import SwiftUI
 struct PreferencesView: View {
     @ObservedObject var model: PreferencesModel
 
+    @AppStorage(NotchSettings.openOnHoverKey) private var notchOpenOnHover = true
+    @AppStorage(NotchSettings.hoverDelayKey) private var notchHoverDelay = 0.3
+    @AppStorage(NotchSettings.liveActivityKey) private var notchLiveActivity = true
+    @AppStorage(NotchSettings.shelfKey) private var notchShelf = true
+    @AppStorage(NotchSettings.hapticsKey) private var notchHaptics = true
+
     var body: some View {
         Form {
             Section {
@@ -50,6 +56,27 @@ struct PreferencesView: View {
                 Text("Apps that should stay open")
             } footer: {
                 Text("These keep macOS's default behavior — closing their last window won't quit them. Only matters when \u{201C}Close button quits app\u{201D} is on.")
+            }
+
+            Section {
+                Toggle("Open on hover", isOn: $notchOpenOnHover)
+                if notchOpenOnHover {
+                    HStack {
+                        Text("Hover delay")
+                        Slider(value: $notchHoverDelay, in: 0...1)
+                        Text(String(format: "%.1f s", notchHoverDelay))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, alignment: .trailing)
+                    }
+                }
+                Toggle("Music live activity beside the notch", isOn: $notchLiveActivity)
+                Toggle("File shelf (drop files on the notch)", isOn: $notchShelf)
+                Toggle("Haptic feedback", isOn: $notchHaptics)
+            } header: {
+                Text("Dynamic notch")
+            } footer: {
+                Text("Only applies while the \u{201C}Dynamic notch\u{201D} tweak is on.")
             }
 
             Section {

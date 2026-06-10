@@ -16,10 +16,12 @@ final class ModuleManager {
             SnapModule(),
             SnapToGridModule(),
             DockPreviewModule(),
+            NotchModule(),
         ]
         // Snap-to-grid ships on by default — it's a harmless, instantly-reversible
         // Finder default, so new users get the tidy-grid behavior out of the box.
         defaults.register(defaults: [key("snap-to-grid"): true])
+        NotchSettings.registerDefaults()
     }
 
     private func key(_ id: String) -> String { "module.\(id).enabled" }

@@ -46,6 +46,15 @@ clutter — it just sits in your status bar.
   on the desktop and in Finder icon views, so files always line up to a tidy grid.
   On by default; folders you've individually arranged keep their own layout, and
   turning it off restores what you had. No permissions needed.
+- **Dynamic notch** *(off by default)* — turns the MacBook notch into a Boring
+  Notch-style hub. While music plays, a live activity (album art + equalizer)
+  sits beside the notch; hover to expand it into a full player with artwork,
+  a scrubber, and transport controls. Drop files, links, or text onto the notch
+  to stash them on a **shelf**, drag them back out anywhere, or AirDrop the lot
+  in one click. Now-playing data comes from the bundled
+  [MediaRemoteAdapter](https://github.com/ungive/mediaremote-adapter) (BSD-3),
+  so it works on macOS 15.4+ where Apple locked down MediaRemote — and it needs
+  no permissions.
 - **Starts at login** and stays out of your way in the menu bar — and out of your
   battery's: when you're not using a tweak, WinHub's idle cost is near zero.
 - **Settings window** (⌘,) to toggle tweaks, manage the exclusion list, and grant
