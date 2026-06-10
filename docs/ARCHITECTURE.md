@@ -20,11 +20,29 @@ Modules/
   ModuleManager.swift registry, persisted on/off state, start/stop logic
   CloseToQuitModule.swift
   DockPreviewModule.swift
+  SnapToGridModule.swift
+  NotchModule.swift
 
 DockPreview/
   DockAccessibility.swift   cursor → Dock-tile hit-testing, orientation, minimized windows
   WindowThumbnails.swift    ScreenCaptureKit capture of an app's windows
   DockPreviewPanel.swift    the floating, non-activating preview panel
+
+Snap/
+  SnapModule.swift, SnapOverlay.swift, SnapHotkeys.swift, WindowAX.swift, ScreenGeometry.swift
+
+Notch/
+  NotchModule.swift       HubModule entry point; owns a NotchController
+  NotchController.swift    window lifecycle, display changes, drag-to-shelf, visualizer gating
+  NotchPanel.swift         borderless click-through NSPanel pinned over the notch
+  NotchRootView.swift      the SwiftUI island: closed live activity + expanded hub
+  NotchViewModel.swift     open/closed state, hover, tab, hit-test rect
+  NotchGeometry/Shape/Style.swift   frame math, the notch silhouette, design tokens
+  MediaWatcher.swift       now-playing state + transport via the media adapter
+  SystemAudioLevels.swift  Core Audio tap → FFT → four band levels
+  ShelfStore.swift, ShelfView.swift   the drop shelf + its UI
+
+Resources/MediaRemoteAdapter/   vendored BSD-3 adapter (perl + framework + test client)
 ```
 
 ## The module system
@@ -105,6 +123,53 @@ window away restores its pre-snap size at the drop point. `SnapHotkeys`
 focused window: ⌃⌥← / ⌃⌥→ halves, ⌃⌥↑ maximize, ⌃⌥↓ restore. Coordinate
 conversions live in `ScreenGeometry`.
 
+### SnapToGridModule (no permissions)
+
+Makes macOS's "Snap to Grid" icon arrangement the default on the desktop and in
+Finder icon views by writing the relevant Finder/desktop view-settings defaults,
+and restores the prior arrangement when turned off. Ships **on** by default — a
+harmless, instantly-reversible default. Verify changes with `defaults read`
+(cfprefsd is the source of truth; the raw plist on disk lags).
+
+### NotchModule (no permissions; visualizer optionally uses System Audio)
+
+A Dynamic-Island-style hub around the camera notch. `NotchModule` is a thin
+`HubModule` that owns a `NotchController`, which manages the window lifecycle and
+the supporting services.
+
+- **NotchPanel** — a borderless, non-activating `NSPanel` at `mainMenu + 3`,
+  dark-appearance, on all Spaces, pinned top-center over the notch
+  (`NotchGeometry`). It's mostly transparent; a `hitTest` override consults
+  `NotchViewModel.interactiveRect` so only the visible island catches clicks and
+  the menu bar underneath stays usable. On screens with no notch it renders as a
+  menu-bar-height pill on the main display.
+- **NotchRootView / NotchViewModel** — the SwiftUI island. Closed, it shows the
+  music live activity (album-art wing + visualizer wing) sized to the physical
+  cutout; hovering (after a short delay) or clicking expands it with spring
+  animations into the player or the shelf tab. The view-model holds the
+  closed/open state, hover, active tab, and the interactive hit-rect.
+- **MediaWatcher** — system-wide now-playing state and transport commands.
+  Spawns `/usr/bin/perl mediaremote-adapter.pl … stream` (the vendored BSD-3
+  [MediaRemoteAdapter](https://github.com/ungive/mediaremote-adapter)) and
+  decodes its NDJSON diff stream; commands (`send`/`seek`) go through the same
+  script. This is the only path that still reads MediaRemote on macOS 15.4+,
+  where Apple restricted the framework to entitled processes — `/usr/bin/perl`
+  is Apple-signed and dlopens the adapter framework. The artwork's vibrant
+  accent color is extracted on a background queue (`ArtworkPalette`).
+- **SystemAudioLevels** — the real visualizer (macOS 14.2+). A **global** Core
+  Audio process tap (`CATapDescription` + a private-output aggregate device)
+  feeds a 1024-point vDSP FFT, reduced to four log-spaced bands with per-band
+  auto-gain and attack/release smoothing; the UI samples the levels per frame.
+  It's gated on playback (Combine on `MediaWatcher`) so the tap — and the system
+  recording indicator — exist only while music plays. A global tap is required
+  because Chromium-based players (Spotify, browsers) render audio from a helper
+  subprocess, not their main PID. Permission is requested up front; declining
+  leaves a layered-sine choreographed fallback.
+- **ShelfStore / ShelfView** — a drag-and-drop tray. Items (file bookmarks,
+  links, text) persist as JSON in Application Support; `ShelfView` shows
+  QuickLook thumbnails and one-tap AirDrop. `NotchController` also watches the
+  drag pasteboard so dropping toward a *closed* notch pops the shelf open.
+
 ## Settings window
 
 A SwiftUI grouped `Form` (`Sources/WinHub/Preferences/`) hosted in an `NSWindow`
@@ -132,10 +197,20 @@ two traps worth knowing:
 Accessibility is gentler — `AXIsProcessTrusted()` reflects the grant live, which
 is why `reconcile()` can start that module without a relaunch.
 
+- **System Audio Recording** (notch visualizer only) behaves like Screen
+  Recording: it needs a fresh launch to take effect, and an unauthorized tap
+  silently delivers zeros rather than erroring. `SystemAudioLevels` requests it
+  via `TCCAccessRequest(kTCCServiceAudioCapture)`; `NSAudioCaptureUsageDescription`
+  in the Info.plist supplies the prompt text. It's the only permission a
+  permission-free-by-default app ever asks for, and only after you enable the
+  notch and play something.
+
 ## Build & packaging
 
-- `build.sh` — release build, assembles `WinHub.app`, writes the Info.plist, and
-  code-signs (stable identity if present, else ad-hoc).
+- `build.sh` — release build, assembles `WinHub.app`, writes the Info.plist,
+  bundles the vendored MediaRemoteAdapter (perl + test client into `Resources/`,
+  the framework into `Frameworks/`), and code-signs nested-code-first with a
+  stable identity if present, else ad-hoc.
 - `Scripts/make_icon.swift` — generates `Resources/WinHub.icns` and a README PNG
   from a vector drawing.
 - `Scripts/make_dmg.sh` — packages a drag-to-install `WinHub.dmg`.

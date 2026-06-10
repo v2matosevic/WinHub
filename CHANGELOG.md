@@ -4,42 +4,44 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.0] — 2026-06-10
+## [1.0.0] — 2026-06-11
+
+First stable release. Five independent tweaks — close-to-quit, Aero Snap,
+snap-to-grid, Dock hover previews, and the new Dynamic notch — each toggleable
+from the menu bar, each asking for a permission only when you turn it on.
 
 ### Added
-- **Dynamic notch** module (off by default) — a Boring Notch-inspired hub around
-  the camera notch:
+- **Dynamic notch** module (off by default) — a Dynamic-Island-style hub around
+  the MacBook camera notch:
   - **Music live activity**: while something plays, the closed notch grows two
-    wings — album art on the left, an equalizer on the right.
-  - **Hover (or click) to expand** into a full player: artwork, title/artist,
-    live scrubber with seek, and previous/play-pause/next controls. Spring
-    animations and hover delay tuned to match the Boring Notch feel.
+    wings — album art on one side, an audio visualizer on the other.
+  - **Real-time audio visualizer** *(macOS 14.2+)*: the bars react to the actual
+    sound. A Core Audio system-audio tap feeds a 1024-point FFT split into
+    bass / low-mid / high-mid / treble bands with per-band auto-gain and
+    attack/release smoothing. It runs only while music plays and tears down a
+    few seconds after it stops — no idle recording. Asks once for system-audio
+    access; decline it (or toggle it off in Settings) and the bars fall back to
+    smooth choreographed motion.
+  - **Hover (or click) to expand** into a full player: artwork, title/artist, a
+    live knobless scrubber with seek, and previous/play-pause/next controls.
   - **Shelf**: drop files, links, or text onto the notch to stash them; drag
     items back out anywhere, double-click to open, AirDrop everything in one
-    click. Items persist across launches. Dragging something toward the notch
-    pops the shelf open automatically.
-  - Works on screens without a notch too (renders as a menu-bar-height pill on
-    the main display when no notch hardware is present).
+    click. Tiles show real QuickLook thumbnails. Items persist across launches,
+    and dragging something toward the notch pops the shelf open automatically.
+  - Works on screens **without** a notch too, rendering as a menu-bar-height
+    pill on the main display.
   - Now-playing data flows through the vendored
     [MediaRemoteAdapter](https://github.com/ungive/mediaremote-adapter)
     (BSD-3-Clause, see `THIRD_PARTY_LICENSES`) — the post-macOS-15.4 way to read
-    MediaRemote state. No permissions required; the notch window is fully
-    click-through outside its visible shape.
-  - **Real audio visualizer** *(macOS 14.2+)*: the closed-notch bars show the
-    actual spectrum of what's playing — a Core Audio system-audio tap feeds a
-    small FFT split into bass / low-mid / high-mid / treble bands with
-    per-band auto-gain. The tap runs only while music plays (macOS asks once
-    for the system-audio permission and shows its recording indicator), and
-    the bars fall back to choreographed motion if it's declined. Toggle in
-    Settings.
-  - **Dynamic-Island design language**: an accent color is pulled from the
-    album art live and tints the scrubber, the closed-notch equalizer, and an
-    ambient glow behind the artwork; the source app's icon badges the cover.
-    iOS-style knobless scrubber that thickens under the pointer and shows
-    elapsed / −remaining; transport buttons with press springs and hover
-    blooms; uniform margins, continuous corners and hairline strokes
-    throughout; shelf tiles use real QuickLook thumbnails and lift on hover;
-    a gear in the island opens WinHub Settings.
+    MediaRemote state. The notch window is fully click-through outside its
+    visible shape, so the menu bar underneath stays usable.
+
+### Design
+- **Dynamic-Island language** throughout the notch: a vibrant accent color is
+  extracted from the album art and tints the scrubber, the visualizer, and an
+  ambient glow behind the cover; the source app's icon badges the artwork;
+  continuous corners, hairline strokes, spring-driven transitions, and consistent
+  margins measured from the island's visible edge.
 
 ## [0.7.0] — 2026-06-09
 

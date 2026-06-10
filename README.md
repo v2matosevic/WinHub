@@ -46,15 +46,18 @@ clutter — it just sits in your status bar.
   on the desktop and in Finder icon views, so files always line up to a tidy grid.
   On by default; folders you've individually arranged keep their own layout, and
   turning it off restores what you had. No permissions needed.
-- **Dynamic notch** *(off by default)* — turns the MacBook notch into a Boring
-  Notch-style hub. While music plays, a live activity (album art + equalizer)
-  sits beside the notch; hover to expand it into a full player with artwork,
-  a scrubber, and transport controls. Drop files, links, or text onto the notch
-  to stash them on a **shelf**, drag them back out anywhere, or AirDrop the lot
-  in one click. Now-playing data comes from the bundled
+- **Dynamic notch** *(off by default)* — turns the MacBook notch into a
+  Dynamic-Island-style hub. While music plays, a live activity sits beside the
+  notch — album art on one side, a **real-time audio visualizer** on the other
+  that reacts to the actual sound. Hover to expand it into a full player: artwork
+  with an ambient glow pulled from the cover art, a scrubber, and transport
+  controls. Drop files, links, or text onto the notch to stash them on a
+  **shelf**, drag them back out anywhere, or AirDrop the lot in one click.
+  Now-playing data comes from the bundled
   [MediaRemoteAdapter](https://github.com/ungive/mediaremote-adapter) (BSD-3),
-  so it works on macOS 15.4+ where Apple locked down MediaRemote — and it needs
-  no permissions.
+  so it works on macOS 15.4+ where Apple locked down MediaRemote. The notch
+  itself needs no permissions; the live visualizer optionally asks for
+  system-audio access (you can turn it off to keep the smooth fallback motion).
 - **Starts at login** and stays out of your way in the menu bar — and out of your
   battery's: when you're not using a tweak, WinHub's idle cost is near zero.
 - **Settings window** (⌘,) to toggle tweaks, manage the exclusion list, and grant
@@ -96,11 +99,14 @@ WinHub asks only for what each module needs, and only when you enable it:
 | --- | --- | --- |
 | **Accessibility** | Close-to-quit, window raising | Observe window close events and raise windows. |
 | **Screen Recording** | Dock hover previews | Capture the thumbnail images of your windows. |
+| **System Audio Recording** | Dynamic notch's live visualizer *(optional)* | Read the audio levels that drive the equalizer. Decline it and the bars fall back to smooth motion. |
 
 Accessibility takes effect immediately. **Screen Recording only applies on a
 fresh launch** — after granting it, use **Relaunch WinHub** from the menu. If
 WinHub isn't listed under *Privacy & Security → Screen & System Audio
-Recording*, add it with the `+` button.
+Recording*, add it with the `+` button. The audio visualizer needs macOS 14.2+
+and is the only thing that ever touches audio — WinHub records nothing; it reads
+levels to animate the bars and stops the moment music does.
 
 ## Requirements
 
