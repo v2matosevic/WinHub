@@ -8,6 +8,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private lazy var preferencesModel = PreferencesModel(manager: manager)
     private var prefsWindow: NSWindow?
 
+    func applicationWillTerminate(_ notification: Notification) {
+        // Stop running modules so their child processes (e.g. the notch
+        // module's media-adapter stream) don't outlive the app.
+        for module in manager.modules where module.isRunning {
+            module.stop()
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         manager.onChange = { [weak self] in
             guard let self else { return }

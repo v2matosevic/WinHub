@@ -123,7 +123,8 @@ struct NotchRootView: View {
                 artworkView(side: side, cornerRadius: 4.5)
                     .padding(.leading, 14)
                 Spacer(minLength: 0)
-                EqualizerView(playing: media.now.playing, tint: accent)
+                EqualizerView(playing: media.now.playing, tint: accent,
+                              live: vm.audioLevels)
                     .frame(width: side - 2, height: max(10, side * 0.52))
                     .padding(.trailing, 15)
             }
@@ -418,33 +419,44 @@ private struct ScrubberView: View {
 
 // MARK: - Closed-notch equalizer
 
-/// Now-Playing bars beside the cutout, tinted from the artwork. Driven by
-/// layered sines per bar — continuous, organic motion like Apple's own
-/// Now Playing indicator, never the random jump of a tick-based fake.
-/// (A true spectrum would need a system audio tap + capture permission.)
+/// Now-Playing bars beside the cutout, tinted from the artwork. When the
+/// system audio tap is running they show the real spectrum (bass → treble);
+/// otherwise they fall back to layered-sine choreography in the same idiom.
 struct EqualizerView: View {
     var playing: Bool
     var tint: Color
+    var live: SystemAudioLevels?
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !playing)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
+            let real = (live?.isRunning == true && playing) ? live?.current : nil
             HStack(spacing: 2.5) {
                 ForEach(0..<4, id: \.self) { bar in
                     Capsule()
                         .fill(LinearGradient(colors: [tint, tint.opacity(0.6)],
                                              startPoint: .top, endPoint: .bottom))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .scaleEffect(y: playing ? Self.level(t, bar) : 0.22, anchor: .bottom)
+                        .scaleEffect(y: playing ? Self.height(real: real, t: t, bar: bar) : 0.22,
+                                     anchor: .bottom)
                         .animation(.easeOut(duration: 0.4), value: playing)
                 }
             }
         }
     }
 
+    private static func height(real: [Float]?, t: Double, bar: Int) -> CGFloat {
+        if let real, real.count == 4 {
+            // Engine levels are already attack/release smoothed; just map
+            // onto a visible floor.
+            return 0.18 + 0.82 * CGFloat(min(1, max(0, real[bar])))
+        }
+        return choreographed(t, bar)
+    }
+
     /// Three detuned sines per bar; neighbouring bars are phase-shifted so
     /// the group undulates instead of moving in lockstep.
-    private static func level(_ t: Double, _ bar: Int) -> CGFloat {
+    private static func choreographed(_ t: Double, _ bar: Int) -> CGFloat {
         let phase = Double(bar) * 1.7
         let v = sin(t * 4.1 + phase) * 0.45
             + sin(t * 6.7 + phase * 2.3) * 0.35

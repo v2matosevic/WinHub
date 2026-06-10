@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 /// Owns the notch window, follows display changes, and watches for external
 /// file drags so the shelf can catch them even while the notch is closed.
@@ -8,6 +9,9 @@ final class NotchController {
     private var viewModel: NotchViewModel?
     private let media = MediaWatcher()
     private let shelf = ShelfStore()
+    private let audioLevels = SystemAudioLevels()
+    private var visualizerSinks = Set<AnyCancellable>()
+    private var visualizerStopTask: Task<Void, Never>?
 
     private var screenObserver: Any?
     private var dragMonitor: Any?
@@ -25,16 +29,54 @@ final class NotchController {
             Task { @MainActor in self?.rebuildPanel() }
         }
         installDragMonitors()
+
+        // The tap only runs while music actually plays — no playback, no
+        // recording indicator, no permission churn.
+        media.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.syncVisualizer() }
+            .store(in: &visualizerSinks)
+        NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.syncVisualizer() }
+            .store(in: &visualizerSinks)
     }
 
     func stop() {
         media.stop()
+        visualizerSinks.removeAll()
+        visualizerStopTask?.cancel()
+        visualizerStopTask = nil
+        audioLevels.stop()
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         screenObserver = nil
         removeDragMonitors()
         panel?.orderOut(nil)
         panel = nil
         viewModel = nil
+    }
+
+    // MARK: - Real-audio visualizer lifecycle
+
+    private var visualizerWanted: Bool {
+        NotchSettings.realVisualizer && NotchSettings.liveActivity
+            && media.isAvailable && media.now.playing
+    }
+
+    private func syncVisualizer() {
+        if visualizerWanted {
+            visualizerStopTask?.cancel()
+            visualizerStopTask = nil
+            audioLevels.start()
+        } else if audioLevels.isRunning, visualizerStopTask == nil {
+            // Linger through a quick pause/track-skip before tearing the tap down.
+            visualizerStopTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                self.visualizerStopTask = nil
+                if !self.visualizerWanted { self.audioLevels.stop() }
+            }
+        }
     }
 
     // MARK: - Window
@@ -48,7 +90,8 @@ final class NotchController {
             return
         }
         panel?.orderOut(nil)
-        let vm = NotchViewModel(closedSize: closedSize, media: media, shelf: shelf)
+        let vm = NotchViewModel(closedSize: closedSize, media: media, shelf: shelf,
+                                audioLevels: audioLevels)
         viewModel = vm
         let newPanel = NotchPanel(screen: screen, viewModel: vm)
         panel = newPanel

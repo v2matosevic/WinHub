@@ -50,6 +50,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSHumanReadableCopyright</key><string>© 2026 Version2 · MIT License</string>
+  <key>NSAudioCaptureUsageDescription</key><string>WinHub listens to the system audio mix only to animate the notch visualizer with the music you're playing. Nothing is recorded or stored.</string>
 </dict>
 </plist>
 PLIST

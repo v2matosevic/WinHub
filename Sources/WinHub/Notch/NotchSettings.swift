@@ -8,6 +8,7 @@ enum NotchSettings {
     static let liveActivityKey = "notch.liveActivity"
     static let shelfKey = "notch.shelf"
     static let hapticsKey = "notch.haptics"
+    static let realVisualizerKey = "notch.realVisualizer"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -16,6 +17,7 @@ enum NotchSettings {
             liveActivityKey: true,
             shelfKey: true,
             hapticsKey: true,
+            realVisualizerKey: true,
         ])
     }
 
@@ -24,4 +26,5 @@ enum NotchSettings {
     static var liveActivity: Bool { UserDefaults.standard.bool(forKey: liveActivityKey) }
     static var shelfEnabled: Bool { UserDefaults.standard.bool(forKey: shelfKey) }
     static var haptics: Bool { UserDefaults.standard.bool(forKey: hapticsKey) }
+    static var realVisualizer: Bool { UserDefaults.standard.bool(forKey: realVisualizerKey) }
 }

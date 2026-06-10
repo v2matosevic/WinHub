@@ -10,6 +10,7 @@ struct PreferencesView: View {
     @AppStorage(NotchSettings.liveActivityKey) private var notchLiveActivity = true
     @AppStorage(NotchSettings.shelfKey) private var notchShelf = true
     @AppStorage(NotchSettings.hapticsKey) private var notchHaptics = true
+    @AppStorage(NotchSettings.realVisualizerKey) private var notchRealVisualizer = true
 
     var body: some View {
         Form {
@@ -71,6 +72,13 @@ struct PreferencesView: View {
                     }
                 }
                 Toggle("Music live activity beside the notch", isOn: $notchLiveActivity)
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle("Visualizer reacts to the actual audio", isOn: $notchRealVisualizer)
+                    Text("Uses a system-audio tap while music plays — macOS asks once for permission and shows its recording indicator.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Toggle("File shelf (drop files on the notch)", isOn: $notchShelf)
                 Toggle("Haptic feedback", isOn: $notchHaptics)
             } header: {

@@ -25,6 +25,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     (BSD-3-Clause, see `THIRD_PARTY_LICENSES`) — the post-macOS-15.4 way to read
     MediaRemote state. No permissions required; the notch window is fully
     click-through outside its visible shape.
+  - **Real audio visualizer** *(macOS 14.2+)*: the closed-notch bars show the
+    actual spectrum of what's playing — a Core Audio system-audio tap feeds a
+    small FFT split into bass / low-mid / high-mid / treble bands with
+    per-band auto-gain. The tap runs only while music plays (macOS asks once
+    for the system-audio permission and shows its recording indicator), and
+    the bars fall back to choreographed motion if it's declined. Toggle in
+    Settings.
   - **Dynamic-Island design language**: an accent color is pulled from the
     album art live and tints the scrubber, the closed-notch equalizer, and an
     ambient glow behind the artwork; the source app's icon badges the cover.

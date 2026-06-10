@@ -19,14 +19,17 @@ final class NotchViewModel: ObservableObject {
     let closedSize: CGSize
     let media: MediaWatcher
     let shelf: ShelfStore
+    let audioLevels: SystemAudioLevels
 
     static let openSpring = Animation.spring(response: 0.42, dampingFraction: 0.8)
     static let closeSpring = Animation.spring(response: 0.45, dampingFraction: 1.0)
 
-    init(closedSize: CGSize, media: MediaWatcher, shelf: ShelfStore) {
+    init(closedSize: CGSize, media: MediaWatcher, shelf: ShelfStore,
+         audioLevels: SystemAudioLevels) {
         self.closedSize = closedSize
         self.media = media
         self.shelf = shelf
+        self.audioLevels = audioLevels
     }
 
     func open(tab: Tab? = nil) {

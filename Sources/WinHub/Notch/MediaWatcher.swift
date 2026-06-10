@@ -284,17 +284,22 @@ final class MediaWatcher: ObservableObject {
     }
 
     private func updateActivity() {
-        idleTask?.cancel()
-        idleTask = nil
-        if now.title == nil && !now.playing {
-            hasActivity = false
-        } else if now.playing {
+        if now.playing {
+            idleTask?.cancel()
+            idleTask = nil
             hasActivity = true
-        } else if hasActivity {
+        } else if now.title == nil {
+            idleTask?.cancel()
+            idleTask = nil
+            hasActivity = false
+        } else if hasActivity, idleTask == nil {
             // Paused: keep the live activity up briefly, then let it collapse.
+            // The timer must survive unrelated diffs (elapsed updates etc.),
+            // so it's only created once per pause.
             idleTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 guard !Task.isCancelled else { return }
+                self?.idleTask = nil
                 self?.hasActivity = false
             }
         }
@@ -305,9 +310,12 @@ final class MediaWatcher: ObservableObject {
     func send(_ command: Command) {
         runOneShot(["send", String(command.rawValue)])
         // Optimistic flip so the button feels instant; the stream corrects us.
+        // Mirror into `raw` too — apply() rebuilds from it on every diff, and
+        // diffs that don't mention "playing" must not revert the flip.
         if command == .togglePlayPause {
             now.playing.toggle()
             now.timestamp = Date()
+            raw["playing"] = now.playing
             if now.playing { hasActivity = true }
         }
     }
