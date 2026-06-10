@@ -13,6 +13,8 @@ final class NotchViewModel: ObservableObject {
     @Published var isHovering = false
     /// While true (drag hovering the shelf, share sheet up) auto-close is refused.
     @Published var holdOpen = false
+    /// True while an external drag is over the island (drives the drop glow).
+    @Published var isDropTargeted = false
 
     let closedSize: CGSize
     let media: MediaWatcher

@@ -41,6 +41,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if CommandLine.arguments.contains("--settings") {
             DispatchQueue.main.async { [weak self] in self?.openPreferences() }
         }
+
+        // The notch hub's gear button lands here.
+        NotificationCenter.default.addObserver(
+            forName: .winhubOpenPreferences, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.openPreferences()
+        }
     }
 
     // MARK: - Reconcile timer

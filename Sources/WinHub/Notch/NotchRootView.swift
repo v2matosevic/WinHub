@@ -1,18 +1,22 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The notch UI: a black pill matching the camera cutout when closed (with a
-/// music live activity inline), expanding into a media-player + shelf hub.
+/// The notch UI: a black island fused with the camera cutout when closed
+/// (music live activity inline), expanding into a media + shelf hub. Depth
+/// comes from artwork-driven ambient light, hairlines and motion — the
+/// surface itself stays pure black, like the Dynamic Island.
 struct NotchRootView: View {
     @ObservedObject var vm: NotchViewModel
     @ObservedObject var media: MediaWatcher
     @ObservedObject var shelf: ShelfStore
 
     @Namespace private var artworkSpace
+    @Namespace private var tabSpace
     @State private var hoverTask: Task<Void, Never>?
     @State private var dropTargeted = false
 
     private var isOpen: Bool { vm.state == .open }
+    private var accent: Color { media.accent.map(Color.init(nsColor:)) ?? .white }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,18 +31,30 @@ struct NotchRootView: View {
     private var notch: some View {
         ZStack(alignment: .top) {
             NotchShape(topRadius: isOpen ? 19 : 6, bottomRadius: isOpen ? 24 : 14)
-                .fill(Color.black)
-                .shadow(color: .black.opacity(isOpen || vm.isHovering ? 0.55 : 0),
-                        radius: isOpen ? 10 : 5, y: 3)
+                .fill(.black)
+                .shadow(color: .black.opacity(isOpen ? 0.55 : vm.isHovering ? 0.35 : 0),
+                        radius: isOpen ? 12 : 5, y: 3)
+            // Specular hairline along the open island's bottom edge — the
+            // "machined edge" that separates it from whatever is behind.
+            if isOpen {
+                NotchShape(topRadius: 19, bottomRadius: 24)
+                    .stroke(
+                        LinearGradient(
+                            colors: [.clear, .clear, .white.opacity(0.14)],
+                            startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1)
+                    .padding(0.5)
+            }
             if isOpen {
                 openContent
-                    .transition(.scale(scale: 0.8, anchor: .top).combined(with: .opacity))
+                    .transition(.islandContent)
             } else {
                 closedContent
             }
         }
         .frame(width: isOpen ? NotchGeometry.openSize.width : vm.closedContentWidth,
                height: isOpen ? NotchGeometry.openSize.height : vm.closedSize.height)
+        .scaleEffect(vm.isHovering && !isOpen ? 1.035 : 1, anchor: .top)
         .contentShape(Rectangle())
         .onHover(perform: handleHover)
         .onTapGesture { if !isOpen { vm.open() } }
@@ -49,6 +65,7 @@ struct NotchRootView: View {
         }
         .onChange(of: dropTargeted) { _, targeted in
             guard NotchSettings.shelfEnabled else { return }
+            vm.isDropTargeted = targeted
             if targeted {
                 vm.holdOpen = true
                 vm.open(tab: .shelf)
@@ -58,6 +75,7 @@ struct NotchRootView: View {
             }
         }
         .animation(isOpen ? NotchViewModel.openSpring : NotchViewModel.closeSpring, value: isOpen)
+        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: vm.isHovering)
         .animation(.smooth(duration: 0.25), value: vm.closedContentWidth)
     }
 
@@ -102,12 +120,12 @@ struct NotchRootView: View {
         if vm.showsActivity {
             let side = max(0, vm.closedSize.height - 12)
             HStack(spacing: 0) {
-                artworkView(side: side, cornerRadius: 4)
+                artworkView(side: side, cornerRadius: 4.5)
                     .padding(.leading, 7)
                 Spacer(minLength: 0)
-                AudioBarsView(playing: media.now.playing)
-                    .frame(width: side, height: max(8, side * 0.55))
-                    .padding(.trailing, 9)
+                EqualizerView(playing: media.now.playing, tint: accent)
+                    .frame(width: side + 2, height: max(9, side * 0.58))
+                    .padding(.trailing, 8)
             }
             .frame(width: vm.closedContentWidth, height: vm.closedSize.height)
         }
@@ -116,55 +134,81 @@ struct NotchRootView: View {
     // MARK: - Open (hub)
 
     private var openContent: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 2) {
             header
             Group {
                 switch vm.tab {
-                case .home: playerView
-                case .shelf: ShelfView(shelf: shelf, vm: vm)
+                case .home:
+                    playerView
+                        .transition(.islandContent)
+                case .shelf:
+                    ShelfView(shelf: shelf, vm: vm, accent: accent)
+                        .transition(.islandContent)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.horizontal, NotchStyle.insetX)
+            .padding(.bottom, NotchStyle.insetBottom)
         }
         .frame(width: NotchGeometry.openSize.width, height: NotchGeometry.openSize.height)
+        .animation(.spring(response: 0.32, dampingFraction: 0.85), value: vm.tab)
     }
 
-    /// Top strip: tabs on the left, status on the right — the middle stays
-    /// clear so the physical cutout blends into the black background.
+    /// Top strip: tabs left, utilities right — the middle stays clear so the
+    /// physical cutout disappears into the black.
     private var header: some View {
-        HStack {
+        HStack(spacing: 0) {
             if NotchSettings.shelfEnabled {
-                HStack(spacing: 2) {
-                    tabButton("music.note", tab: .home, help: "Now playing")
-                    tabButton("tray.fill", tab: .shelf, help: "Shelf")
-                }
-                .padding(2)
-                .background(Capsule().fill(.white.opacity(0.08)))
+                tabPicker
             }
             Spacer()
             if !media.isAvailable {
                 Image(systemName: "play.slash")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(NotchStyle.tertiaryText)
                     .help("Media controls are unavailable on this system")
+                    .padding(.trailing, 10)
             }
+            Button {
+                NotificationCenter.default.post(name: .winhubOpenPreferences, object: nil)
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(GlyphButtonStyle())
+            .help("WinHub Settings")
         }
-        .padding(.horizontal, 14)
-        .frame(height: max(26, vm.closedSize.height))
-        .padding(.top, 2)
+        .padding(.horizontal, NotchStyle.insetX - 3)  // pill/glyph chrome adds ~3pt optically
+        .frame(height: max(28, vm.closedSize.height))
+        .padding(.top, 3)
+    }
+
+    private var tabPicker: some View {
+        HStack(spacing: 2) {
+            tabButton("music.note", tab: .home, help: "Now playing")
+            tabButton("tray.fill", tab: .shelf, help: "Shelf")
+        }
+        .padding(3)
+        .background(Capsule().fill(Color.white.opacity(0.07)))
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.06)))
     }
 
     private func tabButton(_ symbol: String, tab: NotchViewModel.Tab, help: String) -> some View {
         Button {
-            withAnimation(.smooth(duration: 0.2)) { vm.tab = tab }
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) { vm.tab = tab }
         } label: {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(vm.tab == tab ? .white : .white.opacity(0.45))
-                .frame(width: 34, height: 20)
-                .background(Capsule().fill(.white.opacity(vm.tab == tab ? 0.18 : 0)))
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(vm.tab == tab ? Color.black : NotchStyle.secondaryText)
+                .frame(width: 36, height: 19)
+                .background {
+                    if vm.tab == tab {
+                        Capsule()
+                            .fill(Color.white.opacity(0.92))
+                            .matchedGeometryEffect(id: "tab-selection", in: tabSpace)
+                    }
+                }
         }
         .buttonStyle(.plain)
         .help(help)
@@ -172,50 +216,110 @@ struct NotchRootView: View {
 
     // MARK: - Player
 
-    private var playerView: some View {
-        HStack(spacing: 16) {
-            artworkView(side: 92, cornerRadius: 12)
-                .shadow(color: .black.opacity(0.4), radius: 6, y: 2)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(media.now.title ?? (media.isAvailable ? "Nothing playing" : "Media unavailable"))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text(media.now.artist ?? " ")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .lineLimit(1)
-                ProgressSliderView(media: media)
-                    .padding(.top, 2)
-                controls
-                    .padding(.top, 2)
+    @ViewBuilder private var playerView: some View {
+        if media.now.title == nil {
+            idleView
+        } else {
+            HStack(spacing: NotchStyle.gap + 2) {
+                artworkView(side: 100, cornerRadius: 14)
+                    .background(ambientGlow)
+                    .overlay(alignment: .bottomTrailing) { sourceBadge }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(media.now.title ?? "")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(NotchStyle.primaryText)
+                        .lineLimit(1)
+                    Text(media.now.artist ?? " ")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(NotchStyle.secondaryText)
+                        .lineLimit(1)
+                    ScrubberView(media: media, accent: accent)
+                        .padding(.top, 6)
+                    transportControls
+                        .padding(.top, 3)
+                }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
+            .padding(.top, 2)
         }
     }
 
-    private var controls: some View {
-        HStack(spacing: 32) {
-            controlButton("backward.fill", size: 14) { media.send(.previousTrack) }
-            controlButton(media.now.playing ? "pause.fill" : "play.fill", size: 20) {
-                media.send(.togglePlayPause)
+    /// Soft, oversized blur of the artwork itself — ambient light spilling
+    /// out of the cover, the way iOS does it on the Lock Screen player.
+    @ViewBuilder private var ambientGlow: some View {
+        if let art = media.artwork {
+            Image(nsImage: art)
+                .resizable()
+                .scaleEffect(1.3)
+                .blur(radius: 32)
+                .saturation(1.6)
+                .opacity(0.55)
+        }
+    }
+
+    @ViewBuilder private var sourceBadge: some View {
+        if let icon = media.sourceAppIcon {
+            Image(nsImage: icon)
+                .resizable()
+                .frame(width: 24, height: 24)
+                .shadow(color: .black.opacity(0.6), radius: 3, y: 1)
+                .offset(x: 7, y: 7)
+        }
+    }
+
+    private var transportControls: some View {
+        HStack(spacing: 14) {
+            Button { media.send(.previousTrack) } label: {
+                Image(systemName: "backward.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(NotchStyle.primaryText)
             }
-            controlButton("forward.fill", size: 14) { media.send(.nextTrack) }
+            .buttonStyle(TransportButtonStyle(diameter: 32))
+            Button { media.send(.togglePlayPause) } label: {
+                Image(systemName: media.now.playing ? "pause.fill" : "play.fill")
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundStyle(NotchStyle.primaryText)
+                    .contentTransition(.symbolEffect(.replace.downUp))
+            }
+            .buttonStyle(TransportButtonStyle(diameter: 40))
+            Button { media.send(.nextTrack) } label: {
+                Image(systemName: "forward.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(NotchStyle.primaryText)
+            }
+            .buttonStyle(TransportButtonStyle(diameter: 32))
         }
         .frame(maxWidth: .infinity)
         .disabled(!media.isAvailable)
-        .opacity(media.isAvailable ? 1 : 0.4)
+        .opacity(media.isAvailable ? 1 : 0.35)
     }
 
-    private func controlButton(_ symbol: String, size: CGFloat, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: size, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 36, height: 30)
-                .contentShape(Rectangle())
+    private var idleView: some View {
+        HStack(spacing: NotchStyle.gap + 2) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(NotchStyle.tileFill)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(NotchStyle.hairline)
+                Image(systemName: "waveform")
+                    .font(.system(size: 34, weight: .light))
+                    .foregroundStyle(NotchStyle.tertiaryText)
+            }
+            .frame(width: 100, height: 100)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(media.isAvailable ? "Nothing playing" : "Media unavailable")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(NotchStyle.primaryText)
+                Text(media.isAvailable
+                     ? "Play something — it'll show up here with full controls."
+                     : "This system blocks now-playing access.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(NotchStyle.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.plain)
+        .padding(.top, 2)
     }
 
     // MARK: - Shared artwork
@@ -228,25 +332,31 @@ struct NotchRootView: View {
                     .aspectRatio(contentMode: .fill)
             } else {
                 ZStack {
-                    Rectangle().fill(.white.opacity(0.08))
+                    Rectangle().fill(NotchStyle.tileFill)
                     Image(systemName: "music.note")
-                        .font(.system(size: side * 0.4))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .font(.system(size: side * 0.38))
+                        .foregroundStyle(NotchStyle.tertiaryText)
                 }
             }
         }
         .frame(width: side, height: side)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+        )
         .matchedGeometryEffect(id: "artwork", in: artworkSpace)
     }
 }
 
-// MARK: - Progress slider
+// MARK: - Scrubber
 
-/// Thin scrubber with live playhead extrapolation (no polling of the adapter —
-/// elapsed + rate × wall-clock since the last sample).
-private struct ProgressSliderView: View {
+/// iOS-Music-style scrubber: knobless capsule that thickens under the pointer,
+/// tinted from the artwork, with elapsed / −remaining at the ends.
+private struct ScrubberView: View {
     @ObservedObject var media: MediaWatcher
+    var accent: Color
+    @State private var hovering = false
     @State private var scrubbing = false
     @State private var scrubValue: Double = 0
 
@@ -254,15 +364,20 @@ private struct ProgressSliderView: View {
         TimelineView(.periodic(from: .now, by: 0.25)) { context in
             let duration = media.now.duration ?? 0
             let elapsed = scrubbing ? scrubValue : (media.now.estimatedElapsed(at: context.date) ?? 0)
-            VStack(spacing: 2) {
+            let active = hovering || scrubbing
+            VStack(spacing: 3) {
                 GeometryReader { geo in
                     let frac = duration > 0 ? min(1, max(0, elapsed / duration)) : 0
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.2))
-                        Capsule().fill(.white).frame(width: max(4, geo.size.width * frac))
+                        Capsule().fill(Color.white.opacity(0.16))
+                        Capsule()
+                            .fill(LinearGradient(colors: [accent.opacity(0.9), accent],
+                                                 startPoint: .leading, endPoint: .trailing))
+                            .frame(width: max(5, geo.size.width * frac))
                     }
-                    .frame(height: 4)
+                    .frame(height: active ? 8 : 4.5)
                     .frame(maxHeight: .infinity)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: active)
                     .contentShape(Rectangle())
                     .gesture(
                         DragGesture(minimumDistance: 0)
@@ -279,13 +394,14 @@ private struct ProgressSliderView: View {
                     )
                 }
                 .frame(height: 12)
+                .onHover { hovering = $0 }
                 HStack {
                     Text(Self.timeString(elapsed))
                     Spacer()
-                    Text(Self.timeString(duration))
+                    Text(duration > 0 ? "−" + Self.timeString(max(0, duration - elapsed)) : "--:--")
                 }
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.white.opacity(0.45))
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .foregroundStyle(NotchStyle.tertiaryText)
             }
         }
     }
@@ -300,21 +416,23 @@ private struct ProgressSliderView: View {
     }
 }
 
-// MARK: - Closed-notch visualizer
+// MARK: - Closed-notch equalizer
 
-/// Four bouncing bars beside the cutout while music plays. Decorative, not a
-/// real spectrum — deterministic pseudo-random heights per tick.
-struct AudioBarsView: View {
+/// Bouncing bars beside the cutout while music plays, tinted from the artwork.
+/// Decorative, not a real spectrum — deterministic pseudo-random per tick.
+struct EqualizerView: View {
     var playing: Bool
+    var tint: Color
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.35)) { context in
             let tick = Int(context.date.timeIntervalSinceReferenceDate / 0.35)
             HStack(spacing: 2) {
                 ForEach(0..<4, id: \.self) { bar in
-                    let h = playing ? Self.height(tick: tick, bar: bar) : 0.15
+                    let h = playing ? Self.height(tick: tick, bar: bar) : 0.18
                     Capsule()
-                        .fill(.white)
+                        .fill(LinearGradient(colors: [tint, tint.opacity(0.55)],
+                                             startPoint: .top, endPoint: .bottom))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .scaleEffect(y: h, anchor: .bottom)
                         .animation(.easeInOut(duration: 0.3), value: h)
@@ -328,4 +446,9 @@ struct AudioBarsView: View {
             .truncatingRemainder(dividingBy: 1))
         return 0.3 + 0.7 * CGFloat(v)
     }
+}
+
+extension Notification.Name {
+    /// Posted by notch UI; AppDelegate opens the Settings window.
+    static let winhubOpenPreferences = Notification.Name("winhub.openPreferences")
 }

@@ -34,6 +34,11 @@ struct NowPlaying {
 final class MediaWatcher: ObservableObject {
     @Published private(set) var now = NowPlaying()
     @Published private(set) var artwork: NSImage?
+    /// Vibrant accent pulled from the artwork — tints the scrubber, equalizer
+    /// and ambient glow. Nil falls back to white.
+    @Published private(set) var accent: NSColor?
+    /// Icon of the app the audio comes from (badge on the artwork).
+    @Published private(set) var sourceAppIcon: NSImage?
     /// False when the adapter is missing or non-functional on this system.
     @Published private(set) var isAvailable = true
     /// Drives the closed-notch live activity: true while playing, lingers a
@@ -219,7 +224,9 @@ final class MediaWatcher: ObservableObject {
         info.bundleID = (raw["parentApplicationBundleIdentifier"] as? String)
             ?? (raw["bundleIdentifier"] as? String)
         info.timestamp = parseTimestamp(raw["timestamp"])
+        let bundleChanged = info.bundleID != now.bundleID
         now = info
+        if bundleChanged { updateSourceAppIcon() }
         updateArtwork()
         updateActivity()
     }
@@ -248,15 +255,32 @@ final class MediaWatcher: ObservableObject {
     private func updateArtwork() {
         guard let base64 = raw["artworkData"] as? String,
               let data = Data(base64Encoded: base64) else {
-            if now.title == nil { artwork = nil; lastArtworkData = nil }
+            if now.title == nil {
+                artwork = nil
+                accent = nil
+                lastArtworkData = nil
+            }
             return
         }
         guard data != lastArtworkData else { return }
         lastArtworkData = data
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let image = NSImage(data: data)
-            Task { @MainActor in self?.artwork = image }
+            let accent = image.flatMap { ArtworkPalette.accent(from: $0) }
+            Task { @MainActor in
+                self?.artwork = image
+                self?.accent = accent
+            }
         }
+    }
+
+    private func updateSourceAppIcon() {
+        guard let bundleID = now.bundleID,
+              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            sourceAppIcon = nil
+            return
+        }
+        sourceAppIcon = NSWorkspace.shared.icon(forFile: url.path)
     }
 
     private func updateActivity() {

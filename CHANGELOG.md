@@ -25,6 +25,14 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     (BSD-3-Clause, see `THIRD_PARTY_LICENSES`) — the post-macOS-15.4 way to read
     MediaRemote state. No permissions required; the notch window is fully
     click-through outside its visible shape.
+  - **Dynamic-Island design language**: an accent color is pulled from the
+    album art live and tints the scrubber, the closed-notch equalizer, and an
+    ambient glow behind the artwork; the source app's icon badges the cover.
+    iOS-style knobless scrubber that thickens under the pointer and shows
+    elapsed / −remaining; transport buttons with press springs and hover
+    blooms; uniform margins, continuous corners and hairline strokes
+    throughout; shelf tiles use real QuickLook thumbnails and lift on hover;
+    a gear in the island opens WinHub Settings.
 
 ## [0.7.0] — 2026-06-09
 

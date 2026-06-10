@@ -1,115 +1,198 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The shelf tab inside the open notch: AirDrop tile + the item tray.
+/// The shelf tab inside the open island: AirDrop tile + the item tray.
+/// Tiles use real QuickLook thumbnails and lift on hover.
 struct ShelfView: View {
     @ObservedObject var shelf: ShelfStore
     @ObservedObject var vm: NotchViewModel
+    var accent: Color
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: NotchStyle.gap) {
             airdropTile
-            if shelf.items.isEmpty {
-                emptyState
-            } else {
-                itemTray
+            ZStack {
+                if shelf.items.isEmpty {
+                    dropZone
+                } else {
+                    itemTray
+                }
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: shelf.items)
         }
+        .padding(.top, 2)
     }
+
+    // MARK: - AirDrop
 
     private var airdropTile: some View {
-        Button {
+        AirDropTileButton(enabled: !shelf.items.isEmpty) {
             shelf.airDrop()
-        } label: {
-            VStack(spacing: 6) {
-                Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.system(size: 22))
-                Text("AirDrop")
-                    .font(.caption)
-            }
-            .foregroundStyle(.white.opacity(shelf.items.isEmpty ? 0.3 : 0.85))
-            .frame(width: 90, height: 90)
-            .background(RoundedRectangle(cornerRadius: 14).fill(.white.opacity(0.07)))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
         }
-        .buttonStyle(.plain)
-        .disabled(shelf.items.isEmpty)
-        .help("AirDrop everything on the shelf")
     }
 
-    private var emptyState: some View {
-        RoundedRectangle(cornerRadius: 14)
-            .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-            .foregroundStyle(.white.opacity(0.2))
+    // MARK: - Drop zone (empty)
+
+    private var dropZone: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .strokeBorder(
+                vm.isDropTargeted ? accent.opacity(0.9) : Color.white.opacity(0.18),
+                style: StrokeStyle(lineWidth: 1.5, dash: [7, 5]))
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(vm.isDropTargeted ? accent.opacity(0.10) : Color.white.opacity(0.025))
+            )
             .overlay(
-                VStack(spacing: 5) {
-                    Image(systemName: "tray.and.arrow.down")
-                        .font(.title3)
-                    Text("Drop files, links or text here")
-                        .font(.caption)
+                VStack(spacing: 6) {
+                    Image(systemName: "tray.and.arrow.down.fill")
+                        .font(.system(size: 19, weight: .medium))
+                        .foregroundStyle(vm.isDropTargeted ? accent : NotchStyle.tertiaryText)
+                    Text("Drop files, links or text")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(NotchStyle.secondaryText)
+                    Text("Stash here, drag out anywhere")
+                        .font(.system(size: 10))
+                        .foregroundStyle(NotchStyle.tertiaryText)
                 }
-                .foregroundStyle(.white.opacity(0.4))
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeOut(duration: 0.18), value: vm.isDropTargeted)
     }
 
+    // MARK: - Items
+
     private var itemTray: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(shelf.items) { item in
-                    ShelfItemView(item: item, shelf: shelf)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("\(shelf.items.count) item\(shelf.items.count == 1 ? "" : "s")")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(NotchStyle.tertiaryText)
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { shelf.clear() }
+                } label: {
+                    Text("Clear")
+                        .font(.system(size: 10, weight: .semibold))
                 }
+                .buttonStyle(GlyphButtonStyle())
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 6)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(shelf.items) { item in
+                        ShelfItemTile(item: item, shelf: shelf)
+                            .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 8)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .topTrailing) {
-            Button("Clear") { shelf.clear() }
-                .font(.caption2)
-                .buttonStyle(.plain)
-                .foregroundStyle(.white.opacity(0.45))
-                .padding(.trailing, 4)
-        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(vm.isDropTargeted ? accent.opacity(0.7) : .clear, lineWidth: 1.5)
+        )
+        .animation(.easeOut(duration: 0.18), value: vm.isDropTargeted)
     }
 }
 
-/// One shelf item: icon + name, drag-out, double-click to open, hover ⊗ to remove.
-private struct ShelfItemView: View {
+/// AirDrop launcher: concentric-wave glyph that tints AirDrop-blue on hover.
+private struct AirDropTileButton: View {
+    var enabled: Bool
+    var action: () -> Void
+    @State private var hovering = false
+
+    private let airdropBlue = Color(red: 0.04, green: 0.52, blue: 1.0)
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 7) {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 21, weight: .medium))
+                    .foregroundStyle(hovering && enabled ? airdropBlue : NotchStyle.secondaryText)
+                Text("AirDrop")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(hovering && enabled ? NotchStyle.primaryText : NotchStyle.secondaryText)
+            }
+            .frame(width: 96)
+            .frame(maxHeight: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(hovering && enabled ? airdropBlue.opacity(0.16) : NotchStyle.tileFill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(hovering && enabled ? airdropBlue.opacity(0.55) : NotchStyle.hairline)
+            )
+            .scaleEffect(hovering && enabled ? 1.03 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hovering)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.45)
+        .onHover { hovering = $0 }
+        .help("AirDrop everything on the shelf")
+    }
+}
+
+/// One shelf item: QuickLook thumbnail (Finder icon fallback) + name.
+/// Drag out, double-click to open, hover ⊗ to remove.
+private struct ShelfItemTile: View {
     let item: ShelfItem
     @ObservedObject var shelf: ShelfStore
     @State private var hovering = false
+    @State private var thumbnail: NSImage?
 
     var body: some View {
         let url = shelf.url(for: item)
-        VStack(spacing: 4) {
-            iconView(url: url)
-                .frame(width: 42, height: 42)
+        VStack(spacing: 5) {
+            thumbView(url: url)
+                .frame(width: 50, height: 50)
             Text(shelf.displayName(for: item))
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.7))
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundStyle(hovering ? NotchStyle.primaryText : NotchStyle.secondaryText)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(width: 66)
+                .frame(width: 70)
         }
-        .padding(6)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.white.opacity(hovering ? 0.13 : 0.06)))
+        .padding(.horizontal, 5)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(hovering ? NotchStyle.tileFillHover : NotchStyle.tileFill)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(NotchStyle.hairline)
+        )
         .overlay(alignment: .topTrailing) {
             if hovering {
                 Button {
-                    shelf.remove(item)
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { shelf.remove(item) }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.white.opacity(0.7), .black.opacity(0.6))
+                        .font(.system(size: 13))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(Color.white.opacity(0.9), Color.black.opacity(0.65))
                 }
                 .buttonStyle(.plain)
-                .offset(x: 4, y: -4)
+                .offset(x: 5, y: -5)
+                .transition(.scale.combined(with: .opacity))
             }
         }
+        .scaleEffect(hovering ? 1.04 : 1)
+        .shadow(color: .black.opacity(hovering ? 0.4 : 0), radius: 6, y: 3)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hovering)
         .onHover { hovering = $0 }
         .onDrag { dragProvider(url: url) }
         .onTapGesture(count: 2) {
             if let url { NSWorkspace.shared.open(url) }
+        }
+        .task(id: item.id) {
+            if item.kind == .file, let url {
+                thumbnail = await ThumbnailLoader.shared.thumbnail(for: url, side: 50)
+            }
         }
         .help(shelf.displayName(for: item))
     }
@@ -127,26 +210,37 @@ private struct ShelfItemView: View {
     }
 
     @ViewBuilder
-    private func iconView(url: URL?) -> some View {
+    private func thumbView(url: URL?) -> some View {
         switch item.kind {
         case .file:
-            if let url {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                Image(systemName: "doc")
-                    .font(.title2)
-                    .foregroundStyle(.white.opacity(0.6))
+            Group {
+                if let thumbnail {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                } else if let url {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                } else {
+                    glyph("doc.fill")
+                }
             }
         case .link:
-            Image(systemName: "link")
-                .font(.title2)
-                .foregroundStyle(.white.opacity(0.6))
+            glyph("link")
         case .text:
-            Image(systemName: "text.alignleft")
-                .font(.title2)
-                .foregroundStyle(.white.opacity(0.6))
+            glyph("text.alignleft")
+        }
+    }
+
+    private func glyph(_ name: String) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+            Image(systemName: name)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(NotchStyle.secondaryText)
         }
     }
 }
