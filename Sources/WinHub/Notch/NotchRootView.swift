@@ -210,6 +210,8 @@ struct NotchRootView: View {
                             .matchedGeometryEffect(id: "tab-selection", in: tabSpace)
                     }
                 }
+                // Make the whole cell tappable, not just the opaque glyph.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)

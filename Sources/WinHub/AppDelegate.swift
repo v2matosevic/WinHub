@@ -175,6 +175,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             window.styleMask = [.titled, .closable, .miniaturizable]
             window.isReleasedWhenClosed = false
             window.delegate = self
+            // Size to the SwiftUI content *before* centering — otherwise center()
+            // runs on the pre-layout frame and the window ends up pinned to the
+            // top of the screen (its title bar tucked under the notch).
+            hosting.view.layoutSubtreeIfNeeded()
+            let fitting = hosting.view.fittingSize
+            if fitting.width > 0, fitting.height > 0 { window.setContentSize(fitting) }
             window.center()
             prefsWindow = window
         }
