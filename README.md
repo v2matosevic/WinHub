@@ -69,16 +69,9 @@ one straightforward (see [CONTRIBUTING](CONTRIBUTING.md)).
 
 ## Install
 
-### Homebrew (recommended)
-
-```bash
-brew install --cask v2matosevic/tap/winhub
-```
-
-### Direct download
-
-Grab `WinHub.dmg` from the [latest release](https://github.com/v2matosevic/WinHub/releases),
-open it, and drag **WinHub** into **Applications**.
+Download `WinHub.dmg` from the [latest release](https://github.com/v2matosevic/WinHub/releases),
+open it, and drag **WinHub** into **Applications**. (Or [build from
+source](#building-from-source) — it's a single script.)
 
 ### First launch (one time)
 
