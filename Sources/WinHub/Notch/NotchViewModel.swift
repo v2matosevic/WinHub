@@ -46,9 +46,11 @@ final class NotchViewModel: ObservableObject {
 
     /// Closed pill width: the cutout plus the top-corner flares, widened with
     /// two thumbnail "wings" while the music live activity is showing.
+    /// Each wing = outer margin (14, measured from the frame so it clears the
+    /// shape's corner curves) + content + gap to the cutout (6).
     var closedContentWidth: CGFloat {
         guard showsActivity else { return closedSize.width + 12 }
-        return closedSize.width + 2 * max(0, closedSize.height - 12) + 20
+        return closedSize.width + 2 * (max(0, closedSize.height - 12) + 20)
     }
 
     /// Hit-test region in the panel content view's bottom-left-origin coords.

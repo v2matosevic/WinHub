@@ -121,11 +121,11 @@ struct NotchRootView: View {
             let side = max(0, vm.closedSize.height - 12)
             HStack(spacing: 0) {
                 artworkView(side: side, cornerRadius: 4.5)
-                    .padding(.leading, 7)
+                    .padding(.leading, 14)
                 Spacer(minLength: 0)
                 EqualizerView(playing: media.now.playing, tint: accent)
-                    .frame(width: side + 2, height: max(9, side * 0.58))
-                    .padding(.trailing, 8)
+                    .frame(width: side - 2, height: max(10, side * 0.52))
+                    .padding(.trailing, 15)
             }
             .frame(width: vm.closedContentWidth, height: vm.closedSize.height)
         }
@@ -418,33 +418,38 @@ private struct ScrubberView: View {
 
 // MARK: - Closed-notch equalizer
 
-/// Bouncing bars beside the cutout while music plays, tinted from the artwork.
-/// Decorative, not a real spectrum — deterministic pseudo-random per tick.
+/// Now-Playing bars beside the cutout, tinted from the artwork. Driven by
+/// layered sines per bar — continuous, organic motion like Apple's own
+/// Now Playing indicator, never the random jump of a tick-based fake.
+/// (A true spectrum would need a system audio tap + capture permission.)
 struct EqualizerView: View {
     var playing: Bool
     var tint: Color
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.35)) { context in
-            let tick = Int(context.date.timeIntervalSinceReferenceDate / 0.35)
-            HStack(spacing: 2) {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !playing)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 2.5) {
                 ForEach(0..<4, id: \.self) { bar in
-                    let h = playing ? Self.height(tick: tick, bar: bar) : 0.18
                     Capsule()
-                        .fill(LinearGradient(colors: [tint, tint.opacity(0.55)],
+                        .fill(LinearGradient(colors: [tint, tint.opacity(0.6)],
                                              startPoint: .top, endPoint: .bottom))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .scaleEffect(y: h, anchor: .bottom)
-                        .animation(.easeInOut(duration: 0.3), value: h)
+                        .scaleEffect(y: playing ? Self.level(t, bar) : 0.22, anchor: .bottom)
+                        .animation(.easeOut(duration: 0.4), value: playing)
                 }
             }
         }
     }
 
-    private static func height(tick: Int, bar: Int) -> CGFloat {
-        let v = abs(sin(Double(tick &* 7 &+ bar &* 13) * 43758.5453)
-            .truncatingRemainder(dividingBy: 1))
-        return 0.3 + 0.7 * CGFloat(v)
+    /// Three detuned sines per bar; neighbouring bars are phase-shifted so
+    /// the group undulates instead of moving in lockstep.
+    private static func level(_ t: Double, _ bar: Int) -> CGFloat {
+        let phase = Double(bar) * 1.7
+        let v = sin(t * 4.1 + phase) * 0.45
+            + sin(t * 6.7 + phase * 2.3) * 0.35
+            + sin(t * 2.3 + phase * 0.7) * 0.20
+        return CGFloat(0.30 + 0.68 * abs(v))
     }
 }
 
