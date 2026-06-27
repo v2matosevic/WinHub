@@ -17,11 +17,18 @@ final class ModuleManager {
             SnapToGridModule(),
             DockPreviewModule(),
             NotchModule(),
+            SystemMonitorModule(),
         ]
         // Snap-to-grid ships on by default — it's a harmless, instantly-reversible
         // Finder default, so new users get the tidy-grid behavior out of the box.
-        defaults.register(defaults: [key("snap-to-grid"): true])
+        // System monitor ships on too: it's the feature you came for, and it sits
+        // quietly in the menu bar until you turn metrics off.
+        defaults.register(defaults: [
+            key("snap-to-grid"): true,
+            key("system-monitor"): true,
+        ])
         NotchSettings.registerDefaults()
+        SystemMonitorSettings.registerDefaults()
     }
 
     private func key(_ id: String) -> String { "module.\(id).enabled" }

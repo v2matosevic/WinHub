@@ -12,6 +12,11 @@ struct PreferencesView: View {
     @AppStorage(NotchSettings.hapticsKey) private var notchHaptics = true
     @AppStorage(NotchSettings.realVisualizerKey) private var notchRealVisualizer = true
 
+    @AppStorage(SystemMonitorSettings.showRamKey) private var sysmonRam = true
+    @AppStorage(SystemMonitorSettings.showTempKey) private var sysmonTemp = true
+    @AppStorage(SystemMonitorSettings.showCpuKey) private var sysmonCpu = false
+    @AppStorage(SystemMonitorSettings.intervalKey) private var sysmonInterval = 2.0
+
     var body: some View {
         Form {
             Section {
@@ -85,6 +90,24 @@ struct PreferencesView: View {
                 Text("Dynamic notch")
             } footer: {
                 Text("Only applies while the \u{201C}Dynamic notch\u{201D} tweak is on.")
+            }
+
+            Section {
+                Toggle("Memory", isOn: $sysmonRam)
+                Toggle("Temperature", isOn: $sysmonTemp)
+                Toggle("CPU", isOn: $sysmonCpu)
+                HStack {
+                    Text("Refresh every")
+                    Slider(value: $sysmonInterval, in: 1...10, step: 1)
+                    Text(String(format: "%.0f s", sysmonInterval))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, alignment: .trailing)
+                }
+            } header: {
+                Text("System monitor")
+            } footer: {
+                Text("Pick what shows in the menu-bar read-out. Only applies while the \u{201C}System monitor\u{201D} tweak is on.")
             }
 
             Section {

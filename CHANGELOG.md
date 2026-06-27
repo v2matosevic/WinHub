@@ -4,6 +4,20 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-06-27
+
+### Added
+- **System monitor** module (on by default) — a compact, configurable read-out in
+  the menu bar:
+  - Shows **memory used** and **temperature** by default, with **CPU usage**
+    available too — pick what appears from Settings.
+  - **Real temperature on Apple Silicon**, read straight from the SoC die thermal
+    sensors — no third-party helpers and no extra permission.
+  - **Click for today's stats**: high, low, and average for each metric, reset at
+    local midnight and kept across relaunches.
+  - Menu-bar icons sized to sit naturally beside the native system glyphs; the
+    refresh interval is adjustable.
+
 ## [1.0.0] — 2026-06-11
 
 First stable release. Five independent tweaks — close-to-quit, Aero Snap,
