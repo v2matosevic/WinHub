@@ -17,6 +17,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Single-instance guard: if another WinHub is already running (e.g. the
+        // login item launched one and the app was then opened by hand), bow out.
+        // A second instance creates duplicate menu-bar items that fight over the
+        // limited space beside the notch. Tie-break by PID so two near-simultaneous
+        // launches can't both quit — only the lowest-PID instance survives.
+        let me = NSRunningApplication.current
+        let others = NSWorkspace.shared.runningApplications.filter {
+            $0.bundleIdentifier == me.bundleIdentifier && $0.processIdentifier != me.processIdentifier
+        }
+        if others.contains(where: { $0.processIdentifier < me.processIdentifier }) {
+            NSLog("[WinHub] another instance is already running — exiting")
+            NSApp.terminate(nil)
+            return
+        }
+
         manager.onChange = { [weak self] in
             guard let self else { return }
             if let menu = self.statusItem.menu { self.populate(menu) }

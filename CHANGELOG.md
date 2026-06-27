@@ -4,6 +4,13 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] — 2026-06-27
+
+### Fixed
+- **Single-instance guard** — if WinHub is already running (e.g. the login item
+  started it) and the app is opened again, the second copy now bows out instead
+  of adding duplicate menu-bar items that fought over the space beside the notch.
+
 ## [1.1.0] — 2026-06-27
 
 ### Added
