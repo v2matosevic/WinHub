@@ -50,6 +50,9 @@ final class SystemMetrics {
     struct Memory { let usedBytes: UInt64; let totalBytes: UInt64 }
 
     private static let thermal = ThermalAPI.resolve()
+    /// mach_host_self() returns a new send-right reference on every call —
+    /// calling it per tick leaks ports. One right, reused forever.
+    private let host = mach_host_self()
     private var prevCPUTicks: (busy: Double, total: Double)?
 
     /// Retained client + the subset of its sensors that report a die temperature
@@ -65,7 +68,7 @@ final class SystemMetrics {
         var info = host_cpu_load_info_data_t()
         let kr = withUnsafeMutablePointer(to: &info) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: Int(size)) {
-                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &size)
+                host_statistics(host, HOST_CPU_LOAD_INFO, $0, &size)
             }
         }
         guard kr == KERN_SUCCESS else { return 0 }
@@ -93,7 +96,7 @@ final class SystemMetrics {
         var stats = vm_statistics64_data_t()
         let kr = withUnsafeMutablePointer(to: &stats) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: Int(size)) {
-                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &size)
+                host_statistics64(host, HOST_VM_INFO64, $0, &size)
             }
         }
         guard kr == KERN_SUCCESS else { return Memory(usedBytes: 0, totalBytes: total) }

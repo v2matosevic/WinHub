@@ -22,9 +22,24 @@ extension NSImage {
 /// Requires Screen Recording permission; returns an empty array if it's missing or
 /// the app has no eligible windows.
 final class WindowThumbnailService {
-    func capture(appPID: pid_t, maxDimension: CGFloat = 320) async -> [WindowShot] {
-        guard let content = try? await SCShareableContent
-            .excludingDesktopWindows(false, onScreenWindowsOnly: true) else { return [] }
+    /// Shareable content enumerates every on-screen window system-wide — cache it
+    /// briefly so sweeping across several Dock tiles doesn't re-enumerate per hover.
+    private var cachedContent: (content: SCShareableContent, at: Date)?
+
+    /// `maxDimension` is in points and should roughly match the largest size the
+    /// panel actually displays a thumbnail at (the cell is ~130 pt tall) — pixel
+    /// size comes from multiplying by the screen's backing scale.
+    func capture(appPID: pid_t, maxDimension: CGFloat = 160) async -> [WindowShot] {
+        let content: SCShareableContent
+        if let cached = cachedContent, Date().timeIntervalSince(cached.at) < 0.5 {
+            content = cached.content
+        } else {
+            guard let fresh = try? await SCShareableContent
+                .excludingDesktopWindows(false, onScreenWindowsOnly: true) else { return [] }
+            cachedContent = (fresh, Date())
+            content = fresh
+        }
+        let displayScale = await MainActor.run { NSScreen.main?.backingScaleFactor ?? 2 }
 
         let windows = content.windows
             .filter { window in
@@ -42,8 +57,8 @@ final class WindowThumbnailService {
                 group.addTask {
                     let scale = min(1, maxDimension / max(window.frame.width, window.frame.height))
                     let config = SCStreamConfiguration()
-                    config.width  = max(1, Int(window.frame.width  * scale * 2))   // 2x for crispness
-                    config.height = max(1, Int(window.frame.height * scale * 2))
+                    config.width  = max(1, Int(window.frame.width  * scale * displayScale))
+                    config.height = max(1, Int(window.frame.height * scale * displayScale))
                     config.showsCursor = false
                     config.ignoreShadowsSingleWindow = true
 

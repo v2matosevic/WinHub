@@ -20,6 +20,9 @@ final class DockPreviewModule: HubModule {
     private var currentApp: NSRunningApplication?
     private var pendingHide = false
     private var generation = 0
+    /// Where the last AX hit-test ran. A resting cursor inside the Dock band
+    /// re-answers identically, so we only hit-test again once it moves.
+    private var lastHitTestPoint: CGPoint?
 
     func start() {
         let ax = Permission.accessibility.isGranted
@@ -50,6 +53,7 @@ final class DockPreviewModule: HubModule {
         generation += 1
         currentApp = nil
         pendingHide = false
+        lastHitTestPoint = nil
         panel.orderOut(nil)
     }
 
@@ -68,9 +72,15 @@ final class DockPreviewModule: HubModule {
         // preview is up and may need hiding), skip the AX hit-test entirely — the
         // idle cost of this module is then a point comparison per tick.
         if !DockAccessibility.isInDockBand(cocoaPoint: cocoa) {
+            lastHitTestPoint = nil
             if currentApp != nil || panel.isVisible { requestHide() }
             return
         }
+
+        // A cursor resting over the Dock gives the same answer every tick —
+        // skip the AX IPC, bundle lookup, and app resolution until it moves.
+        if let last = lastHitTestPoint, abs(last.x - cocoa.x) < 2, abs(last.y - cocoa.y) < 2 { return }
+        lastHitTestPoint = cocoa
 
         if let tile = DockAccessibility.tile(atTopLeft: ScreenGeometry.topLeftPoint(fromCocoa: cocoa)),
            let app = tile.runningApp, app.activationPolicy == .regular {
@@ -132,17 +142,21 @@ final class DockPreviewModule: HubModule {
 
     // MARK: - Raising / closing a window
 
-    /// The AX window a thumbnail stands for — matched by title, first window as the
-    /// fallback (AX has no public bridge to a CGWindowID).
-    private func axWindow(for selection: DockSelection, in axApp: AXUIElement) -> AXUIElement? {
+    /// The AX window a thumbnail stands for — matched by title (AX has no public
+    /// bridge to a CGWindowID). `fallbackToFirst` covers a renamed window for
+    /// benign actions (raise); destructive ones must pass false — closing an
+    /// arbitrary window on a title miss is worse than doing nothing.
+    private func axWindow(for selection: DockSelection, in axApp: AXUIElement,
+                          fallbackToFirst: Bool) -> AXUIElement? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) == .success,
               let windows = value as? [AXUIElement] else { return nil }
-        return windows.first { window in
+        let match = windows.first { window in
             var titleValue: CFTypeRef?
             AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleValue)
             return (titleValue as? String) == selection.title
-        } ?? windows.first
+        }
+        return match ?? (fallbackToFirst ? windows.first : nil)
     }
 
     private func select(_ selection: DockSelection) {
@@ -154,7 +168,7 @@ final class DockPreviewModule: HubModule {
         app.activate()
 
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        if let match = axWindow(for: selection, in: axApp) {
+        if let match = axWindow(for: selection, in: axApp, fallbackToFirst: true) {
             // Un-minimize first (no-op if it wasn't), then raise and focus.
             AXUIElementSetAttributeValue(match, kAXMinimizedAttribute as CFString, false as CFTypeRef)
             AXUIElementPerformAction(match, kAXRaiseAction as CFString)
@@ -166,7 +180,7 @@ final class DockPreviewModule: HubModule {
     /// the graceful path, so unsaved-work prompts still appear.
     private func close(_ selection: DockSelection) {
         let axApp = AXUIElementCreateApplication(selection.app.processIdentifier)
-        guard let window = axWindow(for: selection, in: axApp) else { return }
+        guard let window = axWindow(for: selection, in: axApp, fallbackToFirst: false) else { return }
         var button: CFTypeRef?
         guard AXUIElementCopyAttributeValue(window, kAXCloseButtonAttribute as CFString, &button) == .success,
               let button else { return }

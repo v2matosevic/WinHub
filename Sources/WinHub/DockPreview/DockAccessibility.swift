@@ -63,13 +63,26 @@ enum DockAccessibility {
 
     private static let dockDefaults = UserDefaults(suiteName: "com.apple.dock")
 
+    /// Cached Dock edge — `isInDockBand` runs on every 16 fps hover tick, and a
+    /// defaults read per tick adds up. Moving the Dock changes `visibleFrame`,
+    /// which fires the screen-parameters notification, so that invalidates it.
+    private static var cachedOrientation: DockOrientation?
+    private static let orientationInvalidator: NSObjectProtocol = NotificationCenter.default.addObserver(
+        forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+    ) { _ in cachedOrientation = nil }
+
     /// Dock edge, read from the Dock's own preferences (defaults to bottom).
     static func orientation() -> DockOrientation {
+        _ = orientationInvalidator   // install the observer on first use
+        if let cachedOrientation { return cachedOrientation }
+        let edge: DockOrientation
         switch dockDefaults?.string(forKey: "orientation") {
-        case "left":  return .left
-        case "right": return .right
-        default:      return .bottom
+        case "left":  edge = .left
+        case "right": edge = .right
+        default:      edge = .bottom
         }
+        cachedOrientation = edge
+        return edge
     }
 
     /// Cheap pure-geometry test: is this Cocoa point inside the band along the Dock

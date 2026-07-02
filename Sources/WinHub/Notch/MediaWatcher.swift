@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import ImageIO
 
 /// A snapshot of what's playing system-wide.
 struct NowPlaying {
@@ -54,7 +55,10 @@ final class MediaWatcher: ObservableObject {
     private var stdoutBuffer = Data()
     /// Accumulated now-playing dictionary; stream messages are diffs onto this.
     private var raw: [String: Any] = [:]
-    private var lastArtworkData: Data?
+    /// Set by parse() when a message actually touched "artworkData", so the
+    /// (expensive) artwork path is skipped on plain elapsed-time diffs.
+    private var artworkDirty = false
+    private var lastArtworkBase64: String?
     private var idleTask: Task<Void, Never>?
     private var oneShots = Set<Process>()
     private var shouldRun = false
@@ -110,6 +114,8 @@ final class MediaWatcher: ObservableObject {
         raw = [:]
         now = NowPlaying()
         artwork = nil
+        accent = nil
+        lastArtworkBase64 = nil
         hasActivity = false
     }
 
@@ -194,8 +200,10 @@ final class MediaWatcher: ObservableObject {
         guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { return }
         if object["payload"] is NSNull {
             raw = [:]
+            artworkDirty = true
         } else if let payload = object["payload"] as? [String: Any] {
             if object["diff"] as? Bool == true {
+                if payload.keys.contains("artworkData") { artworkDirty = true }
                 for (key, value) in payload {
                     if value is NSNull {
                         raw.removeValue(forKey: key)
@@ -205,6 +213,7 @@ final class MediaWatcher: ObservableObject {
                 }
             } else {
                 raw = payload
+                artworkDirty = true
             }
         } else {
             return
@@ -227,7 +236,10 @@ final class MediaWatcher: ObservableObject {
         let bundleChanged = info.bundleID != now.bundleID
         now = info
         if bundleChanged { updateSourceAppIcon() }
-        updateArtwork()
+        if artworkDirty {
+            artworkDirty = false
+            updateArtwork()
+        }
         updateActivity()
     }
 
@@ -253,25 +265,41 @@ final class MediaWatcher: ObservableObject {
     }
 
     private func updateArtwork() {
-        guard let base64 = raw["artworkData"] as? String,
-              let data = Data(base64Encoded: base64) else {
-            if now.title == nil {
-                artwork = nil
-                accent = nil
-                lastArtworkData = nil
-            }
+        guard let base64 = raw["artworkData"] as? String else {
+            // The stream removed the artwork (track change, source gone) —
+            // don't let the previous track's cover linger.
+            artwork = nil
+            accent = nil
+            lastArtworkBase64 = nil
             return
         }
-        guard data != lastArtworkData else { return }
-        lastArtworkData = data
+        guard base64 != lastArtworkBase64 else { return }
+        lastArtworkBase64 = base64
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let image = NSImage(data: data)
+            let image = Self.decodeArtwork(base64)
             let accent = image.flatMap { ArtworkPalette.accent(from: $0) }
             Task { @MainActor in
                 self?.artwork = image
                 self?.accent = accent
             }
         }
+    }
+
+    /// Decode + downsample off the main thread. The UI never shows the cover
+    /// larger than ~100 pt (and blurs it for the glow), so full-resolution art
+    /// only wastes memory and makes the blur pass expensive.
+    private nonisolated static func decodeArtwork(_ base64: String) -> NSImage? {
+        guard let data = Data(base64Encoded: base64) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 512,
+        ]
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return NSImage(data: data)
+        }
+        return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
     }
 
     private func updateSourceAppIcon() {
