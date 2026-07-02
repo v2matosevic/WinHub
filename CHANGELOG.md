@@ -4,6 +4,37 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] — 2026-07-02
+
+A performance and efficiency pass over the always-on hot paths — WinHub runs
+24/7, so idle cost matters.
+
+### Fixed
+- **System monitor no longer leaks Mach ports.** Each CPU/memory sample leaked
+  two host-port references (~86k/day at the default interval). The port is now
+  acquired once and reused.
+- **Dock previews can no longer close the wrong window.** When a window's title
+  changed between capture and click, the thumbnail's ⊗ used to fall back to the
+  app's *first* window — now a failed match does nothing instead of closing an
+  arbitrary window. (Click-to-raise keeps the benign fallback.)
+- **Stale album art on track changes.** Skipping to a track that carries no
+  artwork used to keep the previous track's cover and accent color in the notch;
+  it now clears.
+
+### Changed
+- **Lighter media watching.** Album artwork is only decoded when it actually
+  changes — previously the full cover was base64-decoded on the main thread on
+  every progress update (several times a second while playing). Artwork is also
+  downsampled once (max 512 px) off the main thread, so the ambient glow's blur
+  no longer processes full-resolution art every frame.
+- **Cheaper Dock hovering.** A cursor resting over the Dock no longer re-runs
+  the Accessibility hit-test and app resolution 16×/second — it only re-checks
+  when the cursor moves. The Dock's position is cached instead of read from
+  preferences on every poll tick.
+- **Leaner window thumbnails.** Previews capture at the size they're actually
+  displayed (scaled for Retina) instead of up to 4–5× larger, and the system
+  window list is briefly cached when sweeping across several Dock icons.
+
 ## [1.1.1] — 2026-06-27
 
 ### Fixed
