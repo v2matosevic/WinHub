@@ -30,12 +30,22 @@ enum WindowAX {
     }
 
     /// Every top-level window of the app with `pid` (front-to-back AX order).
+    /// A short messaging timeout keeps one hung app from stalling callers that
+    /// sweep every running app (the AX default is a painful 6 s).
     static func windows(ofAppWithPID pid: pid_t) -> [AXUIElement] {
         let axApp = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(axApp, 0.25)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) == .success,
               let windows = value as? [AXUIElement] else { return [] }
         return windows
+    }
+
+    static func isMinimized(_ window: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &value) == .success
+        else { return false }
+        return (value as? Bool) == true
     }
 
     static func title(of window: AXUIElement) -> String? {

@@ -50,9 +50,20 @@ final class SnapModule: HubModule {
     private var isMoving = false
     private var pendingTarget: CGRect?
     private var pendingZone: Zone?
+    private var pendingVisible: CGRect?
     private var lastTrackTime: TimeInterval = 0
 
     private var snapRecords: [SnapRecord] = []
+
+    /// One Snap Assist chain: the empty zones still to fill (a half leaves one, a
+    /// quarter leaves its sibling quarter then the opposite half — the Windows
+    /// build-a-layout flow) and the windows already placed, excluded from later
+    /// pickers.
+    private struct AssistSession {
+        var pendingZones: [CGRect]
+        var exclusions: [(pid: pid_t, title: String)]
+    }
+    private var assistSession: AssistSession?
 
     func start() {
         guard !isRunning, AXIsProcessTrusted() else { return }
@@ -71,6 +82,7 @@ final class SnapModule: HubModule {
             let current = ScreenGeometry.cocoaRect(fromAX: axFrame)
             self.noteSnap(of: window, from: current, to: target)
             WindowAX.setFrame(window, cocoaRect: target)
+            self.advanceAssist(afterPlacing: window)
         }
     }
 
@@ -127,10 +139,12 @@ final class SnapModule: HubModule {
             let target = zone.rect(in: screen.visibleFrame)
             pendingTarget = target
             pendingZone = zone
+            pendingVisible = screen.visibleFrame
             overlay.show(target)
         } else {
             pendingTarget = nil
             pendingZone = nil
+            pendingVisible = nil
             overlay.hide()
         }
     }
@@ -140,7 +154,9 @@ final class SnapModule: HubModule {
             if let target = pendingTarget {
                 noteSnap(of: window, from: start, to: target)
                 WindowAX.setFrame(window, cocoaRect: target)
-                if let zone = pendingZone { offerAssist(afterSnapTo: zone, target: target, window: window) }
+                if let zone = pendingZone, let visible = pendingVisible {
+                    offerAssist(afterSnapTo: zone, in: visible, window: window)
+                }
             } else if let index = recordIndex(for: window) {
                 // Dragged a snapped window away from its snapped frame → restore its
                 // pre-snap size at the drop point (the missing half of Aero Snap). A
@@ -163,6 +179,7 @@ final class SnapModule: HubModule {
         isMoving = false
         pendingTarget = nil
         pendingZone = nil
+        pendingVisible = nil
     }
 
     // MARK: - Keyboard snapping
@@ -176,7 +193,8 @@ final class SnapModule: HubModule {
         guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(current) }) ?? NSScreen.main
         else { return }
 
-        let zone: Zone
+        var zone: Zone
+        var targetScreen = screen
         switch action {
         case .left:     zone = .left
         case .right:    zone = .right
@@ -191,24 +209,69 @@ final class SnapModule: HubModule {
             return
         }
 
-        let target = zone.rect(in: screen.visibleFrame)
+        // Already snapped to that half? Continue onto the adjacent display,
+        // entering from its near edge (Win+arrow walks across monitors).
+        if zone == .left || zone == .right,
+           approxEqual(current, zone.rect(in: screen.visibleFrame)),
+           let adjacent = adjacentScreen(toThe: zone, of: screen) {
+            targetScreen = adjacent
+            zone = (zone == .left) ? .right : .left
+        }
+
+        let target = zone.rect(in: targetScreen.visibleFrame)
         noteSnap(of: window, from: current, to: target)
         WindowAX.setFrame(window, cocoaRect: target)
-        offerAssist(afterSnapTo: zone, target: target, window: window)
+        offerAssist(afterSnapTo: zone, in: targetScreen.visibleFrame, window: window)
     }
 
-    /// Half-snaps open Snap Assist on the other half; the two halves mirror each
-    /// other, so the empty zone is just the target shifted by its own width.
-    private func offerAssist(afterSnapTo zone: Zone, target: CGRect, window: AXUIElement) {
-        let empty: CGRect
+    /// The nearest screen in `zone`'s direction (.left/.right only), or nil at the
+    /// edge of the arrangement.
+    private func adjacentScreen(toThe zone: Zone, of screen: NSScreen) -> NSScreen? {
+        let others = NSScreen.screens.filter { $0 != screen }
         switch zone {
-        case .left:  empty = target.offsetBy(dx: target.width, dy: 0)
-        case .right: empty = target.offsetBy(dx: -target.width, dy: 0)
-        default:     return
+        case .left:  return others.filter { $0.frame.midX < screen.frame.midX }
+                                  .max { $0.frame.midX < $1.frame.midX }
+        case .right: return others.filter { $0.frame.midX > screen.frame.midX }
+                                  .min { $0.frame.midX < $1.frame.midX }
+        default:     return nil
         }
+    }
+
+    // MARK: - Snap Assist chaining
+
+    /// A snap leaves empty zones to fill: a half leaves the other half, a quarter
+    /// leaves its sibling quarter and then the opposite half. Start a session that
+    /// offers them in that order, excluding the window just placed.
+    private func offerAssist(afterSnapTo zone: Zone, in visible: CGRect, window: AXUIElement) {
+        let queue: [CGRect]
+        switch zone {
+        case .left:        queue = [Zone.right.rect(in: visible)]
+        case .right:       queue = [Zone.left.rect(in: visible)]
+        case .topLeft:     queue = [Zone.bottomLeft.rect(in: visible), Zone.right.rect(in: visible)]
+        case .bottomLeft:  queue = [Zone.topLeft.rect(in: visible), Zone.right.rect(in: visible)]
+        case .topRight:    queue = [Zone.bottomRight.rect(in: visible), Zone.left.rect(in: visible)]
+        case .bottomRight: queue = [Zone.topRight.rect(in: visible), Zone.left.rect(in: visible)]
+        case .maximize:    return
+        }
+        assistSession = AssistSession(pendingZones: queue, exclusions: [exclusion(for: window)])
+        assist.show(zone: queue[0], excluding: assistSession!.exclusions)
+    }
+
+    /// A pick landed — exclude the placed window and offer the next empty zone,
+    /// if the session has one.
+    private func advanceAssist(afterPlacing window: AXUIElement) {
+        guard var session = assistSession, !session.pendingZones.isEmpty else { return }
+        session.pendingZones.removeFirst()
+        session.exclusions.append(exclusion(for: window))
+        assistSession = session
+        guard let next = session.pendingZones.first else { return }
+        assist.show(zone: next, excluding: session.exclusions)
+    }
+
+    private func exclusion(for window: AXUIElement) -> (pid: pid_t, title: String) {
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
-        assist.show(zone: empty, excludingPID: pid, excludingTitle: WindowAX.title(of: window) ?? "")
+        return (pid, WindowAX.title(of: window) ?? "")
     }
 
     // MARK: - Snap registry

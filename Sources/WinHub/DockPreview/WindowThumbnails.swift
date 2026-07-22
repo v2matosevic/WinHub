@@ -42,16 +42,18 @@ final class WindowThumbnailService {
     }
 
     /// Snap Assist candidates: every standard on-screen window except our own and
-    /// the one just snapped (excluded by owner + title). Kept in the front-to-back
-    /// order ScreenCaptureKit reports, so recently used windows come first.
-    func captureSnapCandidates(excludingPID: pid_t, excludingTitle: String,
-                               maxDimension: CGFloat = 280, limit: Int = 6) async -> [WindowShot] {
+    /// the already-placed ones (`excluding`, matched by owner pid + title). Kept in
+    /// the front-to-back order ScreenCaptureKit reports, so recently used windows
+    /// come first.
+    func captureSnapCandidates(excluding: [(pid: pid_t, title: String)],
+                               maxDimension: CGFloat = 280, limit: Int = 9) async -> [WindowShot] {
         guard let content = await shareableContent() else { return [] }
         let ownPID = pid_t(ProcessInfo.processInfo.processIdentifier)
         let windows = content.windows.filter { window in
             guard isStandard(window), let owner = window.owningApplication?.processID,
                   owner != ownPID else { return false }
-            return !(owner == excludingPID && (window.title ?? "") == excludingTitle)
+            let title = window.title ?? ""
+            return !excluding.contains { $0.pid == owner && $0.title == title }
         }
         return await shots(of: Array(windows.prefix(limit)), maxDimension: maxDimension)
     }

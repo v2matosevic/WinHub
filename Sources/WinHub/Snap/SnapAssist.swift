@@ -21,10 +21,10 @@ final class SnapAssist {
         panel.onCancel = { [weak self] in self?.dismiss() }
     }
 
-    /// Offer candidates for the empty `zone` (Cocoa rect). The just-snapped window
-    /// is excluded by owner + title. No-op without Screen Recording permission —
+    /// Offer candidates for the empty `zone` (Cocoa rect). Already-placed windows
+    /// are excluded by owner + title. No-op without Screen Recording permission —
     /// the first attempt raises the system prompt so granting is one click away.
-    func show(zone: CGRect, excludingPID: pid_t, excludingTitle: String) {
+    func show(zone: CGRect, excluding: [(pid: pid_t, title: String)]) {
         guard Permission.screenRecording.isGranted else {
             Permissions.requestScreenRecording()
             return
@@ -34,8 +34,11 @@ final class SnapAssist {
         let token = generation
 
         Task { @MainActor in
-            let shots = await self.thumbnails.captureSnapCandidates(
-                excludingPID: excludingPID, excludingTitle: excludingTitle)
+            var shots = await self.thumbnails.captureSnapCandidates(excluding: excluding)
+            // Minimized windows get reserved slots — on a busy desktop the
+            // on-screen windows would otherwise always crowd them out.
+            let minimized = self.minimizedCandidates(excluding: excluding, limit: 3)
+            shots = Array(shots.prefix(9 - minimized.count)) + minimized
             guard token == self.generation, !shots.isEmpty else { return }
             self.panel.show(shots, zone: zone)
             self.installClickMonitor()
@@ -59,10 +62,36 @@ final class SnapAssist {
             matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in self?.dismiss() }
     }
 
+    /// Minimized windows can't be captured — offer them as app-icon placeholders,
+    /// like Dock previews do (Windows lists them in Snap Assist too). Untitled ones
+    /// are skipped: with no title and no on-screen frame there is nothing to match
+    /// the pick back to.
+    private func minimizedCandidates(excluding: [(pid: pid_t, title: String)],
+                                     limit: Int) -> [WindowShot] {
+        guard limit > 0 else { return [] }
+        let ownPID = pid_t(ProcessInfo.processInfo.processIdentifier)
+        var shots: [WindowShot] = []
+        for app in NSWorkspace.shared.runningApplications
+        where app.activationPolicy == .regular && app.processIdentifier != ownPID {
+            for window in WindowAX.windows(ofAppWithPID: app.processIdentifier)
+            where WindowAX.isMinimized(window) {
+                guard let title = WindowAX.title(of: window), !title.isEmpty,
+                      !excluding.contains(where: { $0.pid == app.processIdentifier && $0.title == title }),
+                      let icon = app.icon?.cgImageRep() else { continue }
+                shots.append(WindowShot(windowID: 0, ownerPID: app.processIdentifier,
+                                        title: title, frame: .zero, image: icon))
+                if shots.count == limit { return shots }
+            }
+        }
+        return shots
+    }
+
     private func pick(_ shot: WindowShot) {
         let zone = targetZone
         dismiss()
         guard let window = axWindow(for: shot) else { return }
+        // Un-minimize first (no-op if it wasn't) so the frame set actually lands.
+        AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, false as CFTypeRef)
         onPick?(window, zone)
 
         // Bring the chosen window forward — it may have been buried or on another

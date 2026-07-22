@@ -59,7 +59,7 @@ final class SnapAssistPanel: NSPanel {
     /// little so the snapped window's edge stays visible).
     func show(_ shots: [WindowShot], zone: CGRect) {
         self.shots = shots
-        columns = shots.count > 1 ? 2 : 1
+        columns = shots.count > 6 ? 3 : (shots.count > 1 ? 2 : 1)
         buildGrid(fitting: zone.insetBy(dx: 48, dy: 48).size)
         selected = 0
 
