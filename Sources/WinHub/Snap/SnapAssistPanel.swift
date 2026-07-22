@@ -1,8 +1,20 @@
 import AppKit
 
-/// An NSButton that carries the index of the shot it represents.
+/// An NSButton that carries the index of the shot it represents and reports
+/// hovers, so the mouse moves the selection ring just like the arrow keys.
 private final class AssistThumbButton: NSButton {
     var index = 0
+    var onHover: ((Int) -> Void)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseEnteredAndExited, .activeAlways],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover?(index) }
 }
 
 /// The Snap Assist picker: fills the empty half of the screen after a half-snap
@@ -76,6 +88,10 @@ final class SnapAssistPanel: NSPanel {
 
     // MARK: - Keyboard
 
+    /// Number-row keycodes → the 1-based cell they pick directly.
+    private static let digitKeys: [Int: Int] = [18: 1, 19: 2, 20: 3, 21: 4, 23: 5,
+                                                22: 6, 26: 7, 28: 8, 25: 9]
+
     override func keyDown(with event: NSEvent) {
         switch Int(event.keyCode) {
         case 123: move(by: -1)              // ←
@@ -84,6 +100,9 @@ final class SnapAssistPanel: NSPanel {
         case 125: move(by: columns)         // ↓
         case 36, 76, 49:                    // Return, keypad Enter, Space
             if shots.indices.contains(selected) { onPick?(shots[selected]) }
+        case let key where Self.digitKeys[key] != nil:
+            let index = Self.digitKeys[key]! - 1
+            if shots.indices.contains(index) { onPick?(shots[index]) }
         default:                            // Esc or any other key: get out of the way
             onCancel?()
         }
@@ -136,6 +155,7 @@ final class SnapAssistPanel: NSPanel {
 
         let button = AssistThumbButton()
         button.index = index
+        button.onHover = { [weak self] hovered in self?.selected = hovered }
         button.image = NSImage(cgImage: shot.image,
                                size: NSSize(width: shot.image.width, height: shot.image.height))
         button.imagePosition = .imageOnly

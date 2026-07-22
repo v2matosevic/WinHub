@@ -31,11 +31,17 @@ final class SnapModule: HubModule {
     }
 
     /// A window WinHub snapped, with the frame it had before — so dragging it away
-    /// (or ⌃⌥↓) can restore it. All frames are Cocoa (bottom-left) coordinates.
+    /// (or ⌃⌥↓) can restore it. `snappedFrame` is the frame the window ACTUALLY
+    /// took, not the zone rect we asked for: apps clamp sizes (min-height and the
+    /// like), and every "is it still where we put it" check must compare against
+    /// reality. `zone` remembers which zone that was, so the arrow ladder can step
+    /// from it even when the achieved frame no longer matches the zone geometry.
+    /// All frames are Cocoa (bottom-left) coordinates.
     private struct SnapRecord {
         let window: AXUIElement
         var originalFrame: CGRect
         var snappedFrame: CGRect
+        var zone: Zone?
     }
 
     private let overlay = SnapOverlay()
@@ -81,8 +87,7 @@ final class SnapModule: HubModule {
         assist.onPick = { [weak self] window, target in
             guard let self, let axFrame = WindowAX.frame(of: window) else { return }
             let current = ScreenGeometry.cocoaRect(fromAX: axFrame)
-            self.noteSnap(of: window, from: current, to: target)
-            WindowAX.setFrame(window, cocoaRect: target)
+            self.applySnap(window, to: target, zone: nil, from: current)
             self.advanceAssist(afterPlacing: window)
         }
     }
@@ -154,8 +159,7 @@ final class SnapModule: HubModule {
     private func end() {
         if isMoving, let window = draggedWindow, let start = dragStartFrame {
             if let target = pendingTarget {
-                noteSnap(of: window, from: start, to: target)
-                WindowAX.setFrame(window, cocoaRect: target)
+                applySnap(window, to: target, zone: pendingZone, from: start)
                 if let zone = pendingZone, let visible = pendingVisible {
                     offerAssist(afterSnapTo: zone, in: visible, window: window)
                 }
@@ -195,13 +199,44 @@ final class SnapModule: HubModule {
         guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(current) }) ?? NSScreen.main
         else { return }
 
-        var zone: Zone
+        // The Win+arrow ladder: arrows move relative to where the window already
+        // sits. ⌃⌥↑/↓ walk half ↔ quarter ↔ maximize/restore vertically, ⌃⌥←/→
+        // slide halves and quarters across the screen and, from the outer edge,
+        // onto the adjacent display (entering from its near edge).
+        let state = zoneState(of: window, frame: current, on: screen)
         var targetScreen = screen
-        switch action {
-        case .left:     zone = .left
-        case .right:    zone = .right
-        case .maximize: zone = .maximize
-        case .restore:
+        var zone: Zone?
+
+        switch (action, state) {
+        case (.left, .topRight):     zone = .topLeft
+        case (.left, .bottomRight):  zone = .bottomLeft
+        case (.left, .topLeft), (.left, .bottomLeft), (.left, .left):
+            if let adjacent = adjacentScreen(toThe: .left, of: screen) {
+                targetScreen = adjacent
+                zone = state == .topLeft ? .topRight : state == .bottomLeft ? .bottomRight : .right
+            }
+        case (.left, _):             zone = .left
+
+        case (.right, .topLeft):     zone = .topRight
+        case (.right, .bottomLeft):  zone = .bottomRight
+        case (.right, .topRight), (.right, .bottomRight), (.right, .right):
+            if let adjacent = adjacentScreen(toThe: .right, of: screen) {
+                targetScreen = adjacent
+                zone = state == .topRight ? .topLeft : state == .bottomRight ? .bottomLeft : .left
+            }
+        case (.right, _):            zone = .right
+
+        case (.maximize, .left):        zone = .topLeft
+        case (.maximize, .right):       zone = .topRight
+        case (.maximize, .bottomLeft):  zone = .left
+        case (.maximize, .bottomRight): zone = .right
+        case (.maximize, _):            zone = .maximize
+
+        case (.restore, .left):     zone = .bottomLeft
+        case (.restore, .right):    zone = .bottomRight
+        case (.restore, .topLeft):  zone = .left
+        case (.restore, .topRight): zone = .right
+        case (.restore, _):
             if let index = recordIndex(for: window) {
                 if approxEqual(current, snapRecords[index].snappedFrame) {
                     WindowAX.setFrame(window, cocoaRect: snapRecords[index].originalFrame)
@@ -211,19 +246,25 @@ final class SnapModule: HubModule {
             return
         }
 
-        // Already snapped to that half? Continue onto the adjacent display,
-        // entering from its near edge (Win+arrow walks across monitors).
-        if zone == .left || zone == .right,
-           approxEqual(current, zone.rect(in: screen.visibleFrame)),
-           let adjacent = adjacentScreen(toThe: zone, of: screen) {
-            targetScreen = adjacent
-            zone = (zone == .left) ? .right : .left
-        }
-
+        guard let zone else { return }   // at the edge of the arrangement — stay put
         let target = zone.rect(in: targetScreen.visibleFrame)
-        noteSnap(of: window, from: current, to: target)
-        WindowAX.setFrame(window, cocoaRect: target)
+        applySnap(window, to: target, zone: zone, from: current)
         offerAssist(afterSnapTo: zone, in: targetScreen.visibleFrame, window: window)
+    }
+
+    /// The zone the window currently occupies — the state the arrow ladder steps
+    /// from. The snap record wins when the window is still where we put it (its
+    /// achieved frame may not match the zone geometry if the app clamped the
+    /// size); geometric matching covers windows placed by other means.
+    private func zoneState(of window: AXUIElement, frame: CGRect, on screen: NSScreen) -> Zone? {
+        if let index = recordIndex(for: window),
+           approxEqual(frame, snapRecords[index].snappedFrame),
+           let zone = snapRecords[index].zone {
+            return zone
+        }
+        let visible = screen.visibleFrame
+        let zones: [Zone] = [.left, .right, .maximize, .topLeft, .topRight, .bottomLeft, .bottomRight]
+        return zones.first { approxEqual(frame, $0.rect(in: visible), tolerance: 12) }
     }
 
     /// The nearest screen in `zone`'s direction (.left/.right only), or nil at the
@@ -326,7 +367,24 @@ final class SnapModule: HubModule {
         snapRecords.firstIndex { CFEqual($0.window, window) }
     }
 
-    private func noteSnap(of window: AXUIElement, from current: CGRect, to target: CGRect) {
+    /// Snap `window` to `target` and record what it actually became. Apps clamp
+    /// frames (min-height and the like) and settle asynchronously, so the record
+    /// starts as the request and self-corrects once the window has settled —
+    /// adopting only clamp-sized drift, not a window the user already dragged off.
+    private func applySnap(_ window: AXUIElement, to target: CGRect, zone: Zone?, from current: CGRect) {
+        WindowAX.setFrame(window, cocoaRect: target)
+        noteSnap(of: window, from: current, to: target, zone: zone)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self, let index = self.recordIndex(for: window),
+                  let axFrame = WindowAX.frame(of: window) else { return }
+            let settled = ScreenGeometry.cocoaRect(fromAX: axFrame)
+            if self.approxEqual(settled, self.snapRecords[index].snappedFrame, tolerance: 100) {
+                self.snapRecords[index].snappedFrame = settled
+            }
+        }
+    }
+
+    private func noteSnap(of window: AXUIElement, from current: CGRect, to target: CGRect, zone: Zone?) {
         if let index = recordIndex(for: window) {
             // Re-snapping zone-to-zone keeps the true original; a frame that no longer
             // matches the recorded snap means the user re-placed the window manually,
@@ -335,8 +393,10 @@ final class SnapModule: HubModule {
                 snapRecords[index].originalFrame = current
             }
             snapRecords[index].snappedFrame = target
+            snapRecords[index].zone = zone
         } else {
-            snapRecords.append(SnapRecord(window: window, originalFrame: current, snappedFrame: target))
+            snapRecords.append(SnapRecord(window: window, originalFrame: current,
+                                          snappedFrame: target, zone: zone))
             if snapRecords.count > 32 { snapRecords.removeFirst() }   // stale-window cap
         }
     }

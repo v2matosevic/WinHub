@@ -40,8 +40,17 @@ clutter — it just sits in your status bar.
   Snap-style: left/right edge for half the screen, a **corner for a quarter**,
   top edge to maximize. A preview shows where it'll land before you let go, and
   dragging a snapped window away **restores its original size** — just like
-  Windows. Prefer the keyboard? **⌃⌥←/→** for halves, **⌃⌥↑** to maximize,
-  **⌃⌥↓** to restore.
+  Windows. On the keyboard, **⌃⌥ + arrows** walk the full Windows ladder:
+  **←/→** for halves (press again at the edge to continue onto the next
+  display), **↑/↓** to step half ↔ quarter ↔ maximize, **⌃⌥↓** at the bottom to
+  restore.
+- **Snap Assist** — snap a window to a half and the empty half offers your other
+  windows as live thumbnails (minimized ones included): click one, arrow to it
+  and press Return, or hit its number. Quarter snaps chain — fill the sibling
+  quarter, then the opposite half, Windows 11 style. The picker only appears
+  when there's actually room: zones already holding a snapped window are
+  skipped, and a half with one quarter taken shrinks to the free quarter.
+  (Thumbnails need Screen Recording permission; requested on first use.)
 - **Snap icons to a grid** — makes macOS's "Snap to Grid" the default everywhere,
   on the desktop and in Finder icon views, so files always line up to a tidy grid.
   On by default; folders you've individually arranged keep their own layout, and

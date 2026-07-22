@@ -4,6 +4,42 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-07-22
+
+Snap gets the rest of its Windows story: Snap Assist and the full Win+arrow
+keyboard ladder.
+
+### Added
+- **Snap Assist.** Snapping a window to a half offers your other windows as
+  live thumbnails in the empty half — click, arrows + Return, or number keys
+  1–9 to place one there. Minimized windows are included as app-icon
+  placeholders (with reserved slots so busy desktops don't crowd them out);
+  picking one un-minimizes and snaps in one motion. Thumbnails need Screen
+  Recording permission, requested contextually on first use — snapping itself
+  never depends on it.
+- **Quarter-snap chaining.** Snapping into a corner offers the sibling quarter,
+  then the opposite half — the Windows 11 build-a-layout flow, with every
+  already-placed window excluded from later pickers.
+- **Keyboard quarters.** ⌃⌥↑/↓ now walk the Windows ladder relative to where
+  the window sits: from a half, ↑/↓ step into the top/bottom quarter; from a
+  quarter, back to the half or up to maximize; ⌃⌥↓ at the bottom restores the
+  pre-snap frame, exactly as before.
+- **Cross-display arrows.** ⌃⌥←/→ on an already-snapped half or quarter
+  continues onto the adjacent display, entering from its near edge.
+
+### Changed
+- **Assist offers only what the layout allows.** Zones already holding a
+  zone-shaped window are skipped entirely (two halves filled → no picker), and
+  a half with one quarter taken shrinks the offer to the free quarter. Offers
+  are checked against real on-screen frames at offer time, not the action that
+  triggered them.
+- **Snap tracking survives stubborn apps.** Windows that clamp their minimum
+  size (so the achieved frame differs from the requested zone) are tracked by
+  what they actually became — the arrow ladder and restore keep working on
+  them.
+- Window-list sweeps use a 0.25 s Accessibility messaging timeout so one hung
+  app can't stall the picker (the system default is 6 s).
+
 ## [1.1.2] — 2026-07-02
 
 A performance and efficiency pass over the always-on hot paths — WinHub runs
