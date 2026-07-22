@@ -57,10 +57,11 @@ final class SnapModule: HubModule {
 
     /// One Snap Assist chain: the empty zones still to fill (a half leaves one, a
     /// quarter leaves its sibling quarter then the opposite half — the Windows
-    /// build-a-layout flow) and the windows already placed, excluded from later
-    /// pickers.
+    /// build-a-layout flow), the screen they're on, and the windows already
+    /// placed, excluded from later pickers.
     private struct AssistSession {
-        var pendingZones: [CGRect]
+        var pendingZones: [Zone]
+        var visible: CGRect
         var exclusions: [(pid: pid_t, title: String)]
     }
     private var assistSession: AssistSession?
@@ -94,6 +95,7 @@ final class SnapModule: HubModule {
         upMonitor = nil
         hotkeys.unregister()
         assist.dismiss()
+        assistSession = nil
         snapRecords.removeAll()
         reset()
     }
@@ -243,18 +245,19 @@ final class SnapModule: HubModule {
     /// leaves its sibling quarter and then the opposite half. Start a session that
     /// offers them in that order, excluding the window just placed.
     private func offerAssist(afterSnapTo zone: Zone, in visible: CGRect, window: AXUIElement) {
-        let queue: [CGRect]
+        let queue: [Zone]
         switch zone {
-        case .left:        queue = [Zone.right.rect(in: visible)]
-        case .right:       queue = [Zone.left.rect(in: visible)]
-        case .topLeft:     queue = [Zone.bottomLeft.rect(in: visible), Zone.right.rect(in: visible)]
-        case .bottomLeft:  queue = [Zone.topLeft.rect(in: visible), Zone.right.rect(in: visible)]
-        case .topRight:    queue = [Zone.bottomRight.rect(in: visible), Zone.left.rect(in: visible)]
-        case .bottomRight: queue = [Zone.topRight.rect(in: visible), Zone.left.rect(in: visible)]
+        case .left:        queue = [.right]
+        case .right:       queue = [.left]
+        case .topLeft:     queue = [.bottomLeft, .right]
+        case .bottomLeft:  queue = [.topLeft, .right]
+        case .topRight:    queue = [.bottomRight, .left]
+        case .bottomRight: queue = [.topRight, .left]
         case .maximize:    return
         }
-        assistSession = AssistSession(pendingZones: queue, exclusions: [exclusion(for: window)])
-        assist.show(zone: queue[0], excluding: assistSession!.exclusions)
+        assistSession = AssistSession(pendingZones: queue, visible: visible,
+                                      exclusions: [exclusion(for: window)])
+        offerNextAssistZone()
     }
 
     /// A pick landed — exclude the placed window and offer the next empty zone,
@@ -264,8 +267,51 @@ final class SnapModule: HubModule {
         session.pendingZones.removeFirst()
         session.exclusions.append(exclusion(for: window))
         assistSession = session
-        guard let next = session.pendingZones.first else { return }
-        assist.show(zone: next, excluding: session.exclusions)
+        offerNextAssistZone()
+    }
+
+    /// Offer the first queued zone that the real layout leaves open. Assist
+    /// reflects what is on screen, not just the action that triggered it: a zone
+    /// already holding a zone-shaped window is skipped (two halves filled → no
+    /// picker at all), and a half with one quarter taken shrinks to the free
+    /// quarter — the Windows behavior. Placed/snapped windows in `exclusions`
+    /// don't count as occupants: right after a snap the enumeration may still
+    /// report the moved window at its old frame.
+    private func offerNextAssistZone() {
+        guard let session = assistSession else { return }
+        Task { @MainActor in
+            let occupied = await self.assist.currentWindows()
+                .filter { window in
+                    !session.exclusions.contains { $0.pid == window.pid && $0.title == window.title }
+                }
+                .map(\.frame)
+            let taken: (CGRect) -> Bool = { rect in
+                occupied.contains { self.approxEqual($0, rect, tolerance: 12) }
+            }
+
+            var remaining = session.pendingZones
+            var offer: CGRect?
+            while offer == nil, let zone = remaining.first {
+                let rect = zone.rect(in: session.visible)
+                if taken(rect) { remaining.removeFirst(); continue }
+                if zone == .left || zone == .right {
+                    let top = CGRect(x: rect.minX, y: rect.midY, width: rect.width, height: rect.height / 2)
+                    let bottom = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height / 2)
+                    switch (taken(top), taken(bottom)) {
+                    case (true, true):  remaining.removeFirst(); continue
+                    case (true, false): offer = bottom
+                    case (false, true): offer = top
+                    case (false, false): offer = rect
+                    }
+                } else {
+                    offer = rect
+                }
+            }
+
+            self.assistSession?.pendingZones = remaining
+            guard let rect = offer else { self.assistSession = nil; return }
+            self.assist.show(zone: rect, excluding: session.exclusions)
+        }
     }
 
     private func exclusion(for window: AXUIElement) -> (pid: pid_t, title: String) {

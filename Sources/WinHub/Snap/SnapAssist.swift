@@ -45,6 +45,13 @@ final class SnapAssist {
         }
     }
 
+    /// The real on-screen layout in Cocoa coordinates, for zone-occupancy
+    /// decisions in SnapModule.
+    func currentWindows() async -> [(pid: pid_t, title: String, frame: CGRect)] {
+        await thumbnails.standardWindows()
+            .map { ($0.pid, $0.title, ScreenGeometry.cocoaRect(fromAX: $0.frame)) }
+    }
+
     func dismiss() {
         generation += 1
         panel.dismiss()

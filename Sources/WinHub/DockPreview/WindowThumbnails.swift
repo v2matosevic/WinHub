@@ -58,6 +58,17 @@ final class WindowThumbnailService {
         return await shots(of: Array(windows.prefix(limit)), maxDimension: maxDimension)
     }
 
+    /// The current layout: owner + title + frame (AX top-left coords) of every
+    /// standard on-screen window. Rides the brief content cache, so calling right
+    /// before a capture costs one enumeration.
+    func standardWindows() async -> [(pid: pid_t, title: String, frame: CGRect)] {
+        guard let content = await shareableContent() else { return [] }
+        return content.windows.filter { isStandard($0) }.compactMap { window in
+            guard let owner = window.owningApplication?.processID else { return nil }
+            return (owner, window.title ?? "", window.frame)
+        }
+    }
+
     // MARK: - Internals
 
     private func shareableContent() async -> SCShareableContent? {
