@@ -29,6 +29,21 @@ enum WindowAX {
         return (value as! AXUIElement)
     }
 
+    /// Every top-level window of the app with `pid` (front-to-back AX order).
+    static func windows(ofAppWithPID pid: pid_t) -> [AXUIElement] {
+        let axApp = AXUIElementCreateApplication(pid)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &value) == .success,
+              let windows = value as? [AXUIElement] else { return [] }
+        return windows
+    }
+
+    static func title(of window: AXUIElement) -> String? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &value) == .success else { return nil }
+        return value as? String
+    }
+
     static func position(of window: AXUIElement) -> CGPoint? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &value) == .success else { return nil }

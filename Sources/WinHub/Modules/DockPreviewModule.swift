@@ -111,7 +111,9 @@ final class DockPreviewModule: HubModule {
                 let shown = Set(shots.map { $0.title })
                 for title in minimized where !shown.contains(title) {
                     shots.append(WindowShot(windowID: 0,
+                                            ownerPID: app.processIdentifier,
                                             title: title.isEmpty ? (app.localizedName ?? "Window") : title,
+                                            frame: .zero,
                                             image: icon))
                 }
             }

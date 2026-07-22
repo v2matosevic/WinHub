@@ -9,7 +9,7 @@ import ApplicationServices
 final class SnapModule: HubModule {
     let id = "window-snap"
     let title = "Snap windows to edges"
-    let summary = "Drag to an edge or corner to snap — halves, quarters, top to maximize. ⌃⌥ arrows for keyboard snapping."
+    let summary = "Drag to an edge or corner to snap — halves, quarters, top to maximize. ⌃⌥ arrows for keyboard snapping. After a half-snap, pick a window to fill the other half."
     let requiredPermissions: [Permission] = [.accessibility]
     let isAvailable = true
     private(set) var isRunning = false
@@ -40,6 +40,7 @@ final class SnapModule: HubModule {
 
     private let overlay = SnapOverlay()
     private let hotkeys = SnapHotkeys()
+    private let assist = SnapAssist()
     private var dragMonitor: Any?
     private var upMonitor: Any?
 
@@ -48,6 +49,7 @@ final class SnapModule: HubModule {
     private var dragStartFrame: CGRect?      // Cocoa; also serves as the move-detection baseline
     private var isMoving = false
     private var pendingTarget: CGRect?
+    private var pendingZone: Zone?
     private var lastTrackTime: TimeInterval = 0
 
     private var snapRecords: [SnapRecord] = []
@@ -62,6 +64,14 @@ final class SnapModule: HubModule {
         upMonitor   = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp])      { [weak self] _ in self?.end() }
         hotkeys.onAction = { [weak self] action in self?.perform(action) }
         hotkeys.register()
+        // Snap Assist picks route back here so they land in the snap registry like
+        // any other snap (⌃⌥↓ and drag-away restore keep working on them).
+        assist.onPick = { [weak self] window, target in
+            guard let self, let axFrame = WindowAX.frame(of: window) else { return }
+            let current = ScreenGeometry.cocoaRect(fromAX: axFrame)
+            self.noteSnap(of: window, from: current, to: target)
+            WindowAX.setFrame(window, cocoaRect: target)
+        }
     }
 
     func stop() {
@@ -71,6 +81,7 @@ final class SnapModule: HubModule {
         dragMonitor = nil
         upMonitor = nil
         hotkeys.unregister()
+        assist.dismiss()
         snapRecords.removeAll()
         reset()
     }
@@ -80,6 +91,7 @@ final class SnapModule: HubModule {
     private func dragged() {
         if !dragSessionActive {
             dragSessionActive = true
+            assist.dismiss()     // grabbing a window means the user moved on
             let topLeft = ScreenGeometry.topLeftPoint(fromCocoa: NSEvent.mouseLocation)
             if let window = WindowAX.window(atTopLeft: topLeft), let frame = WindowAX.frame(of: window) {
                 draggedWindow = window
@@ -114,9 +126,11 @@ final class SnapModule: HubModule {
         if let zone = zone(forCursor: cocoa, on: screen) {
             let target = zone.rect(in: screen.visibleFrame)
             pendingTarget = target
+            pendingZone = zone
             overlay.show(target)
         } else {
             pendingTarget = nil
+            pendingZone = nil
             overlay.hide()
         }
     }
@@ -126,6 +140,7 @@ final class SnapModule: HubModule {
             if let target = pendingTarget {
                 noteSnap(of: window, from: start, to: target)
                 WindowAX.setFrame(window, cocoaRect: target)
+                if let zone = pendingZone { offerAssist(afterSnapTo: zone, target: target, window: window) }
             } else if let index = recordIndex(for: window) {
                 // Dragged a snapped window away from its snapped frame → restore its
                 // pre-snap size at the drop point (the missing half of Aero Snap). A
@@ -147,11 +162,13 @@ final class SnapModule: HubModule {
         dragStartFrame = nil
         isMoving = false
         pendingTarget = nil
+        pendingZone = nil
     }
 
     // MARK: - Keyboard snapping
 
     private func perform(_ action: SnapHotkeys.Action) {
+        assist.dismiss()     // a fresh snap action supersedes any open picker
         guard isRunning,
               let window = WindowAX.focusedWindow(),
               let axFrame = WindowAX.frame(of: window) else { return }
@@ -177,6 +194,21 @@ final class SnapModule: HubModule {
         let target = zone.rect(in: screen.visibleFrame)
         noteSnap(of: window, from: current, to: target)
         WindowAX.setFrame(window, cocoaRect: target)
+        offerAssist(afterSnapTo: zone, target: target, window: window)
+    }
+
+    /// Half-snaps open Snap Assist on the other half; the two halves mirror each
+    /// other, so the empty zone is just the target shifted by its own width.
+    private func offerAssist(afterSnapTo zone: Zone, target: CGRect, window: AXUIElement) {
+        let empty: CGRect
+        switch zone {
+        case .left:  empty = target.offsetBy(dx: target.width, dy: 0)
+        case .right: empty = target.offsetBy(dx: -target.width, dy: 0)
+        default:     return
+        }
+        var pid: pid_t = 0
+        AXUIElementGetPid(window, &pid)
+        assist.show(zone: empty, excludingPID: pid, excludingTitle: WindowAX.title(of: window) ?? "")
     }
 
     // MARK: - Snap registry
