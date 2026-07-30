@@ -21,6 +21,7 @@ Modules/
   CloseToQuitModule.swift
   DockPreviewModule.swift
   SnapToGridModule.swift
+  FinderKeysModule.swift
   NotchModule.swift
 
 DockPreview/
@@ -29,7 +30,22 @@ DockPreview/
   DockPreviewPanel.swift    the floating, non-activating preview panel
 
 Snap/
-  SnapModule.swift, SnapOverlay.swift, SnapHotkeys.swift, WindowAX.swift, ScreenGeometry.swift
+  SnapModule.swift      drag + keyboard snapping, the snap registry, assist chaining
+  SnapOverlay.swift     the translucent drop-target preview
+  SnapHotkeys.swift     Carbon ⌃⌥ + arrow hotkeys
+  SnapAssist.swift      candidate capture + pick → AX window matching
+  SnapAssistPanel.swift the picker panel (click, arrows + Return, number keys)
+  WindowAX.swift, ScreenGeometry.swift
+
+FinderKeys/
+  FinderKeyTap.swift        CGEvent tap: Delete/F2/Return → the macOS shortcut
+  FinderKeysSettings.swift  per-key toggles
+
+SystemMonitor/
+  SystemMonitorModule.swift its own status item, background sampling, stats menu
+  SystemMetrics.swift       CPU/RAM via mach, die temperature via private IOKit HID
+  SystemMonitorHistory.swift today's high/low/average, persisted
+  SystemMonitorSettings.swift which metrics show, refresh interval
 
 Notch/
   NotchModule.swift       HubModule entry point; owns a NotchController
@@ -116,12 +132,30 @@ count (no snapping at the seam between monitors). On release it sets the window'
 `AXPosition`/`AXSize` (`WindowAX.setFrame`, position-size-position to beat apps
 that clamp).
 
-Every snap is remembered in a small registry (window element → original +
-snapped frame), which powers the other half of Aero Snap: dragging a snapped
-window away restores its pre-snap size at the drop point. `SnapHotkeys`
-(Carbon `RegisterEventHotKey`, no event tap) adds keyboard snapping on the
-focused window: ⌃⌥← / ⌃⌥→ halves, ⌃⌥↑ maximize, ⌃⌥↓ restore. Coordinate
-conversions live in `ScreenGeometry`.
+Every snap is remembered in a small registry (window element → original frame,
+the frame it *actually* took, and the zone), which powers the other half of Aero
+Snap: dragging a snapped window away restores its pre-snap size at the drop
+point. Apps clamp sizes, so the record self-corrects to the achieved frame ~0.2 s
+after the set — every "is it still where we put it" test compares against
+reality, not the requested zone.
+
+`SnapHotkeys` (Carbon `RegisterEventHotKey`, no event tap) adds the Win+arrow
+ladder on the focused window, stepping *relative to the zone it already occupies*
+(`zoneState`): ⌃⌥←/→ slide halves and quarters across the screen and, from the
+outer edge, onto the adjacent display; ⌃⌥↑/↓ walk half ↔ quarter ↔ maximize, with
+⌃⌥↓ at the bottom restoring the pre-snap frame. Coordinate conversions live in
+`ScreenGeometry`.
+
+**Snap Assist** (`SnapAssist`, `SnapAssistPanel`) fills the rest of the layout.
+After a snap, `SnapModule.offerAssist` queues the zones that snap left empty (a
+half leaves the other half; a quarter leaves its sibling then the opposite half)
+and offers each one that the *real* on-screen layout still leaves open — a zone
+already holding a zone-shaped window is skipped, and a half with one quarter
+taken shrinks to the free quarter. Candidates are live ScreenCaptureKit
+thumbnails plus reserved slots for minimized windows (app-icon placeholders);
+picking one routes back through `SnapModule` so it lands in the snap registry
+like any other snap. Screen Recording is requested contextually on first use —
+snapping itself never depends on it.
 
 ### SnapToGridModule (no permissions)
 
@@ -130,6 +164,57 @@ Finder icon views by writing the relevant Finder/desktop view-settings defaults,
 and restores the prior arrangement when turned off. Ships **on** by default — a
 harmless, instantly-reversible default. Verify changes with `defaults read`
 (cfprefsd is the source of truth; the raw plist on disk lags).
+
+### FinderKeysModule (Accessibility)
+
+Windows keyboard habits in Finder, off by default. `FinderKeyTap` installs a
+`.cgSessionEventTap` on keyDown/keyUp and rewrites three keys into the macOS
+shortcut that already does the job — Delete (and forward-delete) → ⌘⌫, F2 → ↩,
+Return (and keypad Enter) → ⌘↓ — by swallowing the original and posting a fresh
+event tagged in `eventSourceUserData` so the tap ignores its own output. Finder
+does the actual work, so undo, sounds and save prompts are untouched.
+
+It sits on the keystroke path for the whole session, so every decision is biased
+toward doing nothing:
+
+- a cached `frontmostIsFinder` Bool (kept by `didActivateApplicationNotification`)
+  makes every other app's keystrokes a single branch;
+- any real modifier passes through, so the shortcuts it translates *into* keep
+  working (fn is ignored — on a laptop fn+⌫ *is* the Windows Delete key);
+- the focus must clear as "the file view": a focused window whose subrole isn't
+  `AXStandardWindow` (a sheet, an alert) or a focused element in `hazardRoles`
+  (text field, search field, menu, button) passes through untouched. The desktop
+  has no focused window, which is fine.
+
+The AX probes run inline on the keystroke path, so the Finder element carries a
+0.05 s messaging timeout — a wedged Finder must never be able to hold the
+keyboard hostage. `tapDisabledByTimeout` / `ByUserInput` re-enable the tap rather
+than letting it go quietly dead.
+
+### SystemMonitorModule (no permissions)
+
+A RAM / temperature / CPU read-out in its own status item, refreshed on a timer
+(common run-loop modes, so it keeps ticking while a menu is open).
+
+This module ships **on** and ticks forever, so its cost is the app's floor —
+which is why the sampling is arranged the way it is. `SystemMetrics` is
+single-threaded state (the CPU-tick baseline, resolved HID sensor handles) and is
+confined to one serial background queue: `temperature()` is a *synchronous* IOKit
+HID IPC per sensor and profiled at ~18 ms of main-thread block per tick when it
+ran there. Main only ever receives the finished `Sample`. Temperature also has
+its own relaxed cadence (~6 s), being the most expensive and slowest-moving
+reading.
+
+On the render side, the SF Symbol attachments are built once and cached, and
+`attributedTitle` is only set when the text it would show actually changes —
+setting it forces `NSStatusItem._adjustLength` → Auto Layout → a layer redraw.
+Together these took idle CPU from ~2% to ~0.3%.
+
+`SystemStatsStore` keeps today's high/low/average, fed one sample per tick and
+flushed to `UserDefaults` at most every 15 s. Never observe
+`UserDefaults.didChangeNotification` here — the module writes defaults itself, and
+reacting to its own write recurses into a stack overflow. Settings are read live
+each tick instead.
 
 ### NotchModule (no permissions; visualizer optionally uses System Audio)
 

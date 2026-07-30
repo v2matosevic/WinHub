@@ -46,8 +46,31 @@ private struct ThermalAPI {
 /// Cheap, on-demand system readings for the menu-bar monitor. One instance is
 /// reused across ticks: CPU/RAM are mach calls; the temperature sensor handles
 /// are resolved once and re-read each call.
+///
+/// **Not thread-safe, and deliberately so** — it carries the CPU-tick baseline and
+/// the resolved HID sensor handles as plain mutable state. `SystemMonitorModule`
+/// confines every call to one serial queue, off the main thread: `temperature()`
+/// is a *synchronous* IOKit IPC per sensor, and profiling it on the main thread
+/// showed ~18 ms of block per tick.
 final class SystemMetrics {
     struct Memory { let usedBytes: UInt64; let totalBytes: UInt64 }
+
+    /// One tick's readings. `temperature` is nil when the sensors are unavailable
+    /// *or* when the caller skipped the (expensive) read this tick.
+    struct Sample {
+        let cpu: Double                // busy fraction, 0–1
+        let memory: Memory
+        let temperature: Double?
+    }
+
+    /// Take one set of readings. Call off the main thread, on a single queue.
+    /// `includeTemperature: false` skips the IOKit round-trips — die temperature
+    /// moves far slower than the refresh interval, so it doesn't need every tick.
+    func sample(includeTemperature: Bool) -> Sample {
+        Sample(cpu: cpuUsage(),
+               memory: memory(),
+               temperature: includeTemperature ? temperature() : nil)
+    }
 
     private static let thermal = ThermalAPI.resolve()
     /// mach_host_self() returns a new send-right reference on every call —

@@ -4,6 +4,35 @@ All notable changes to WinHub are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-07-30
+
+Windows keyboard habits reach Finder, and the always-on cost of the menu-bar
+read-out drops by roughly 6×.
+
+### Added
+- **Windows keys in Finder** *(off by default)*. Delete moves the selection to
+  the Trash, F2 renames it, Return opens it. Each key is translated into the
+  macOS shortcut that already does the job (⌘⌫ / ↩ / ⌘↓), so Finder's own undo,
+  sounds and confirmations are unchanged and WinHub never touches a file itself.
+  The translations apply only while Finder is frontmost, never with a modifier
+  held, and never while the keyboard is in a rename field, the search field, a
+  dialog or a tracking menu. Each of the three is individually switchable in
+  **Settings**.
+
+### Changed
+- **System monitor costs a fraction of what it did.** Idle CPU with the default
+  set of tweaks drops from ~2% to ~0.3%. Readings now happen on a background
+  queue instead of the main thread — `temperature()` is a synchronous IOKit call
+  per sensor and was blocking the UI for ~18 ms every tick — the SF Symbol
+  glyphs in the label are built once rather than rebuilt tens of thousands of
+  times a day, and the menu-bar label is only re-rendered when the text it shows
+  actually changes (setting it forces an Auto Layout pass and a layer redraw).
+- **Die temperature is sampled on its own relaxed cadence** (~6 s) rather than
+  every refresh. It's the most expensive reading and the slowest-moving one.
+- **The read-out keeps updating while a menu is open.** Its timer now runs in
+  common run-loop modes, so the "Now" row no longer freezes the moment you open
+  the dropdown to look at it.
+
 ## [1.2.0] — 2026-07-22
 
 Snap gets the rest of its Windows story: Snap Assist and the full Win+arrow

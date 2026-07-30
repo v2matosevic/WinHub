@@ -51,6 +51,12 @@ clutter — it just sits in your status bar.
   when there's actually room: zones already holding a snapped window are
   skipped, and a half with one quarter taken shrinks to the free quarter.
   (Thumbnails need Screen Recording permission; requested on first use.)
+- **Windows keys in Finder** *(off by default)* — **Delete** moves the selection
+  to the Trash, **F2** renames it, **Return** opens it. Each key is translated
+  into the macOS shortcut that already does the job, so Finder's own undo and
+  save prompts behave exactly as they always did. Only while Finder is
+  frontmost, never with a modifier held, and never while you're typing a name or
+  a search — pick which of the three you want in **Settings**.
 - **Snap icons to a grid** — makes macOS's "Snap to Grid" the default everywhere,
   on the desktop and in Finder icon views, so files always line up to a tidy grid.
   On by default; folders you've individually arranged keep their own layout, and

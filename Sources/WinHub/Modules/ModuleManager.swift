@@ -16,6 +16,7 @@ final class ModuleManager {
             SnapModule(),
             SnapToGridModule(),
             DockPreviewModule(),
+            FinderKeysModule(),
             NotchModule(),
             SystemMonitorModule(),
         ]
@@ -29,6 +30,7 @@ final class ModuleManager {
         ])
         NotchSettings.registerDefaults()
         SystemMonitorSettings.registerDefaults()
+        FinderKeysSettings.registerDefaults()
     }
 
     private func key(_ id: String) -> String { "module.\(id).enabled" }

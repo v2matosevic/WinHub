@@ -3,6 +3,10 @@ import AppKit
 /// A compact RAM / temperature / CPU read-out in the menu bar. Owns its own
 /// status item (separate from WinHub's hub icon) and refreshes on a timer. Which
 /// metrics show is configurable in Settings — read live, so toggles apply at once.
+///
+/// Sampling runs off the main thread and the label is only re-rendered when the
+/// text it would show actually changes: this module ships on by default and ticks
+/// forever, so its cost is the app's floor. See `sampleQueue` and `render(_:)`.
 final class SystemMonitorModule: NSObject, HubModule, NSMenuDelegate {
     let id = "system-monitor"
     let title = "System monitor"
@@ -15,12 +19,26 @@ final class SystemMonitorModule: NSObject, HubModule, NSMenuDelegate {
     private var timer: Timer?
     private var scheduledInterval: Double = 0
 
+    /// `SystemMetrics` is single-threaded state and `temperature()` blocks on a
+    /// synchronous IOKit IPC per sensor — keep every reading on this one queue and
+    /// off the main thread, which only ever receives the finished `Sample`.
+    private let sampleQueue = DispatchQueue(label: "hr.version2.winhub.sysmon", qos: .utility)
+    /// Set while a sample is in flight, so a slow read can't stack up ticks.
+    private var isSampling = false
+
     // Latest readings, refreshed each tick and reused by the dropdown menu.
     private let stats = SystemStatsStore()
     private var hasCPUBaseline = false
+    private var hasReading = false
     private var lastCPU: Double = 0
     private var lastMemory = SystemMetrics.Memory(usedBytes: 0, totalBytes: 0)
     private var lastTemp: Double?
+
+    /// Die temperature moves far slower than the refresh interval, and reading it
+    /// is the single most expensive thing this module does — sample it on its own
+    /// relaxed cadence and carry the value between reads.
+    private static let temperatureInterval: TimeInterval = 6
+    private var lastTemperatureRead = Date.distantPast
 
     func start() {
         guard !isRunning else { return }
@@ -33,8 +51,9 @@ final class SystemMonitorModule: NSObject, HubModule, NSMenuDelegate {
             menu.autoenablesItems = false
             item.menu = menu
             statusItem = item
+            render(nil)          // placeholder glyph until the first sample lands
             scheduleTimer()
-            refresh()
+            requestSample()
         }
         isRunning = true
         NSLog("[WinHub.sysmon] started")
@@ -49,6 +68,7 @@ final class SystemMonitorModule: NSObject, HubModule, NSMenuDelegate {
                 NSStatusBar.system.removeStatusItem(item)
                 statusItem = nil
             }
+            lastLabelKey = nil
         }
         isRunning = false
         NSLog("[WinHub.sysmon] stopped")
@@ -60,64 +80,63 @@ final class SystemMonitorModule: NSObject, HubModule, NSMenuDelegate {
         timer?.invalidate()
         let interval = SystemMonitorSettings.interval
         scheduledInterval = interval
-        let t = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             self?.tick()
         }
         t.tolerance = interval * 0.2
+        // Common modes, so the read-out keeps updating while a menu is tracking —
+        // otherwise our own "Now" row freezes the moment you open it.
+        RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 
     /// One refresh, plus a cheap check for a Settings change. We deliberately do
-    /// NOT observe `UserDefaults.didChangeNotification`: `refresh()` writes today's
+    /// NOT observe `UserDefaults.didChangeNotification`: `apply()` writes today's
     /// stats to defaults, and reacting to our own write would recurse. Metric
-    /// toggles are read live inside `refresh()`, so they apply on the next tick;
+    /// toggles are read live when rendering, so they apply on the next tick;
     /// an interval change just reschedules the timer here.
     private func tick() {
-        refresh()
+        requestSample()
         if SystemMonitorSettings.interval != scheduledInterval {
             scheduleTimer()
         }
     }
 
-    private func refresh() {
-        guard let button = statusItem?.button else { return }
+    /// Kick one background sample. No-op while one is already in flight.
+    private func requestSample() {
+        guard !isSampling else { return }
+        isSampling = true
+        let wantsTemperature = Date().timeIntervalSince(lastTemperatureRead) >= Self.temperatureInterval
+        sampleQueue.async { [weak self] in
+            guard let self else { return }
+            let sample = self.metrics.sample(includeTemperature: wantsTemperature)
+            DispatchQueue.main.async {
+                self.isSampling = false
+                self.apply(sample, readTemperature: wantsTemperature)
+            }
+        }
+    }
 
-        // All three reads are cheap; sample every tick so values are fresh the
-        // instant a metric is switched on, and fold them into today's stats.
-        lastCPU = metrics.cpuUsage()
-        lastMemory = metrics.memory()
-        lastTemp = metrics.temperature()
+    /// Fold a finished sample into today's stats and update the menu-bar label.
+    private func apply(_ sample: SystemMetrics.Sample, readTemperature: Bool) {
+        lastCPU = sample.cpu
+        lastMemory = sample.memory
+        if readTemperature {
+            lastTemperatureRead = Date()
+            lastTemp = sample.temperature
+        }
+        hasReading = true
 
         // Only fold in valid samples: CPU's first reading has no delta (skip it),
-        // and a zero memory read means host_statistics64 failed.
+        // and a zero memory read means host_statistics64 failed. Temperature is
+        // only recorded on the ticks we actually read it.
         let cpuSample: Double? = hasCPUBaseline ? lastCPU * 100 : nil
         hasCPUBaseline = true
         let ramSample: Double? = lastMemory.usedBytes > 0 ? usedRAMGB : nil
-        stats.record(cpuPercent: cpuSample, ramGB: ramSample, tempC: lastTemp)
+        stats.record(cpuPercent: cpuSample, ramGB: ramSample,
+                     tempC: readTemperature ? lastTemp : nil)
 
-        let label = NSMutableAttributedString()
-        if SystemMonitorSettings.showCpu {
-            append(to: label, symbol: "cpu", text: "\(Int(round(lastCPU * 100)))%")
-        }
-        if SystemMonitorSettings.showRam {
-            append(to: label, symbol: "memorychip", text: String(format: "%.1fG", usedRAMGB))
-        }
-        if SystemMonitorSettings.showTemp, let t = lastTemp {
-            append(to: label, symbol: "thermometer.medium", text: "\(Int(round(t)))°")
-        }
-
-        if label.length == 0 {
-            // Everything hidden (or temp the only pick and it's unavailable): fall
-            // back to a glyph so the item is still findable and clickable.
-            button.attributedTitle = NSAttributedString(string: "")
-            let glyph = NSImage(systemSymbolName: "gauge.with.dots.needle.bottom.50percent",
-                                accessibilityDescription: "System monitor")
-            glyph?.isTemplate = true
-            button.image = glyph
-        } else {
-            button.image = nil
-            button.attributedTitle = label
-        }
+        render(currentLabelKey())
     }
 
     private var usedRAMGB: Double { Double(lastMemory.usedBytes) / 1_073_741_824 }
@@ -129,6 +148,54 @@ final class SystemMonitorModule: NSObject, HubModule, NSMenuDelegate {
     private let labelFont = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)
     private let iconPointSize: CGFloat = 15
 
+    /// The pieces the label would show right now: (SF Symbol, text). Nil while we
+    /// have no reading yet.
+    private func currentLabelKey() -> [(symbol: String, text: String)]? {
+        guard hasReading else { return nil }
+        var parts: [(symbol: String, text: String)] = []
+        if SystemMonitorSettings.showCpu {
+            parts.append(("cpu", "\(Int(round(lastCPU * 100)))%"))
+        }
+        if SystemMonitorSettings.showRam {
+            parts.append(("memorychip", String(format: "%.1fG", usedRAMGB)))
+        }
+        if SystemMonitorSettings.showTemp, let t = lastTemp {
+            parts.append(("thermometer.medium", "\(Int(round(t)))°"))
+        }
+        return parts
+    }
+
+    /// The last rendered label, as a plain string. Setting `attributedTitle` forces
+    /// `NSStatusItem._adjustLength` → Auto Layout → a layer redraw, so skip it
+    /// entirely when the text hasn't moved (RAM in 0.1 GB steps and whole-degree
+    /// temperature hold still for many ticks at a time).
+    private var lastLabelKey: String?
+
+    private func render(_ parts: [(symbol: String, text: String)]?) {
+        guard let button = statusItem?.button else { return }
+        let key = parts.map { $0.map { "\($0.symbol):\($0.text)" }.joined(separator: "|") } ?? "\u{0}"
+        guard key != lastLabelKey else { return }
+        lastLabelKey = key
+
+        guard let parts, !parts.isEmpty else {
+            // No reading yet, or everything hidden (or temp the only pick and it's
+            // unavailable): fall back to a glyph so the item is still findable.
+            button.attributedTitle = NSAttributedString(string: "")
+            let glyph = NSImage(systemSymbolName: "gauge.with.dots.needle.bottom.50percent",
+                                accessibilityDescription: "System monitor")
+            glyph?.isTemplate = true
+            button.image = glyph
+            return
+        }
+
+        let label = NSMutableAttributedString()
+        for part in parts {
+            append(to: label, symbol: part.symbol, text: part.text)
+        }
+        button.image = nil
+        button.attributedTitle = label
+    }
+
     private func append(to string: NSMutableAttributedString, symbol: String, text: String) {
         if string.length > 0 {
             // Wider gap between metric groups than between an icon and its number.
@@ -138,7 +205,12 @@ final class SystemMonitorModule: NSObject, HubModule, NSMenuDelegate {
         string.append(NSAttributedString(string: "\u{2009}" + text, attributes: [.font: labelFont]))
     }
 
+    /// The glyphs never change — build each once instead of re-resolving an
+    /// `NSImage` out of the symbol catalog on every tick, forever.
+    private var symbolCache: [String: NSAttributedString] = [:]
+
     private func symbolAttachment(_ name: String) -> NSAttributedString {
+        if let cached = symbolCache[name] { return cached }
         let config = NSImage.SymbolConfiguration(pointSize: iconPointSize, weight: .medium)
             .applying(NSImage.SymbolConfiguration(scale: .medium))
         let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
@@ -152,24 +224,28 @@ final class SystemMonitorModule: NSObject, HubModule, NSMenuDelegate {
             let y = (labelFont.capHeight - size.height) / 2
             attachment.bounds = CGRect(x: 0, y: y, width: size.width, height: size.height)
         }
-        return NSAttributedString(attachment: attachment)
+        let built = NSAttributedString(attachment: attachment)
+        symbolCache[name] = built
+        return built
     }
 
     // MARK: - Dropdown stats menu
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        refresh()
+        // Build from the latest reading and kick a fresh one — the timer runs in
+        // common modes, so the menu keeps updating while it's open.
+        requestSample()
         menu.removeAllItems()
 
         addSection(to: menu, title: "Temperature", stat: stats.temp,
                    now: lastTemp, unit: "°C", decimals: 0)
         menu.addItem(.separator())
         addSection(to: menu, title: "Memory", stat: stats.ram,
-                   now: usedRAMGB, unit: " GB", decimals: 1)
+                   now: hasReading ? usedRAMGB : nil, unit: " GB", decimals: 1)
         if SystemMonitorSettings.showCpu {
             menu.addItem(.separator())
             addSection(to: menu, title: "CPU", stat: stats.cpu,
-                       now: lastCPU * 100, unit: "%", decimals: 0)
+                       now: hasReading ? lastCPU * 100 : nil, unit: "%", decimals: 0)
         }
 
         menu.addItem(.separator())

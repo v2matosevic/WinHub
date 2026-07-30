@@ -12,6 +12,10 @@ struct PreferencesView: View {
     @AppStorage(NotchSettings.hapticsKey) private var notchHaptics = true
     @AppStorage(NotchSettings.realVisualizerKey) private var notchRealVisualizer = true
 
+    @AppStorage(FinderKeysSettings.deleteToTrashKey) private var finderDelete = true
+    @AppStorage(FinderKeysSettings.f2RenameKey) private var finderF2 = true
+    @AppStorage(FinderKeysSettings.enterOpensKey) private var finderEnter = true
+
     @AppStorage(SystemMonitorSettings.showRamKey) private var sysmonRam = true
     @AppStorage(SystemMonitorSettings.showTempKey) private var sysmonTemp = true
     @AppStorage(SystemMonitorSettings.showCpuKey) private var sysmonCpu = false
@@ -62,6 +66,16 @@ struct PreferencesView: View {
                 Text("Apps that should stay open")
             } footer: {
                 Text("These keep macOS's default behavior — closing their last window won't quit them. Only matters when \u{201C}Close button quits app\u{201D} is on.")
+            }
+
+            Section {
+                Toggle("Delete moves to the Trash", isOn: $finderDelete)
+                Toggle("F2 renames", isOn: $finderF2)
+                Toggle("Return opens", isOn: $finderEnter)
+            } header: {
+                Text("Windows keys in Finder")
+            } footer: {
+                Text("Each key is translated into the macOS shortcut that already does the job, and only while Finder is frontmost — never while you're typing a name or a search. Only applies while the \u{201C}Windows keys in Finder\u{201D} tweak is on.")
             }
 
             Section {
