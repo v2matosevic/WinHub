@@ -105,9 +105,13 @@ WinHub asks only for what each module needs, and only when you enable it:
 
 | Permission | Used by | Why |
 | --- | --- | --- |
-| **Accessibility** | Close-to-quit, window raising | Observe window close events and raise windows. |
+| **Accessibility** | Close-to-quit, snapping, window raising, Finder keys | Observe window close events, move and raise windows, and read Finder's keyboard focus. |
 | **Screen Recording** | Dock hover previews | Capture the thumbnail images of your windows. |
 | **System Audio Recording** | Dynamic notch's live visualizer *(optional)* | Read the audio levels that drive the equalizer. Decline it and the bars fall back to smooth motion. |
+
+What it does with each one, and what it stores, is spelled out in
+[SECURITY.md](SECURITY.md) — short version: nothing leaves your Mac, and the
+only network request is the manual update check.
 
 Accessibility takes effect immediately. **Screen Recording only applies on a
 fresh launch** — after granting it, use **Relaunch WinHub** from the menu. If
